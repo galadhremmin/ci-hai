@@ -1,6 +1,6 @@
 辞海
 ==============
-A fork of Parf Edhellen for mandarin.
+A fork of [Parf Edhellen](https://github.com/galadhremmin/Parf-Edhellen) for mandarin.
 
 License
 -------
