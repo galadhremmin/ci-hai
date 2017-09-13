@@ -1,10 +1,10 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import classNames from 'classnames';
 import { connect } from 'react-redux';
 import EDConfig from 'ed-config';
 import { selectFragment } from '../actions';
 import EDFragment from './fragment';
-import EDTengwarFragment from './tengwar-fragment';
 import EDBookGloss from '../../search/components/book-gloss';
 import { Parser as HtmlToReactParser } from 'html-to-react';
 
@@ -13,17 +13,22 @@ class EDFragmentExplorer extends React.Component {
         super(props);
         this.state = {
             fragmentIndex: 0,
-            fragmentLines: Array.isArray(props.fragments)
-                ? this.createFragmentLines(props.fragments, false) 
-                : []
+            detailsAsOverlay: false
         };
+    }
+
+    /**
+     * Component will mount, which is an opening for event hooks
+     */
+    componentWillMount() {
+        window.addEventListener('scroll', this.onWindowScroll.bind(this));
     }
 
     /**
      * Component has mounted and initial state retrieved from the server should be applied.
      */
     componentDidMount() {
-        let fragmentIndex = 0;
+        let fragmentIndex = this.nextFragmentIndex(-1);
         // Does the shebang specify the fragment ID?
         if (/^#![0-9]+$/.test(window.location.hash)) {
             const fragmentId = parseInt(String(window.location.hash).substr(2), 10);
@@ -37,56 +42,14 @@ class EDFragmentExplorer extends React.Component {
     }
 
     /**
-     * Receives fragments and splits them into lines.
-     * @param {*} props 
-     */
-    componentWillReceiveProps(props) {
-        if (Array.isArray(props.fragments)) {
-            this.createFragmentLines(props.fragments);
-        }
-    }
-
-    /**
-     * Receives an array of fragments and divides it into fragment lines, which in turn is rendered.
-     * @param {Object[]} fragments 
-     * @param {boolean} updateState
-     */
-    createFragmentLines(fragments, updateState = true) {
-        let fragmentLines = [];
-        let lastIndex = 0;
-
-        // Look for line breaks and slice the array by those fragments
-        for (let i = 0; i < fragments.length; i += 1) {
-            const fragment = fragments[i];
-
-            if (fragment.is_linebreak || i + 1 === fragments.length) {
-                const fragmentsForLine = fragments.slice(lastIndex, 
-                    i + 1 === fragments.length
-                        ? i + 1 // at the end, make sure to also include the last fragment.
-                        : i);
-                fragmentLines.push(fragmentsForLine);
-                lastIndex = i + 1; // +1 to skip the line break fragment.
-            }
-        }
-
-        if (updateState) {
-            this.setState({
-                fragmentLines
-            });
-        }
-
-        return fragmentLines;
-    }
-
-    /**
      * Retrieves the fragment index for the next fragment, or returns the current fragment index
      * if none exists.
      */
-    nextFragmentIndex() {
-        for (let i = this.state.fragmentIndex + 1; i < this.props.fragments.length; i += 1) {
+    nextFragmentIndex(rootIndex = this.state.fragmentIndex) {
+        for (let i = rootIndex + 1; i < this.props.fragments.length; i += 1) {
             const fragment = this.props.fragments[i];
 
-            if (!fragment.interpunctuation) {
+            if (! fragment.type) {
                 return i;
             }
         }
@@ -102,12 +65,44 @@ class EDFragmentExplorer extends React.Component {
         for (let i = this.state.fragmentIndex - 1; i > -1; i -= 1) {
             const fragment = this.props.fragments[i];
 
-            if (!fragment.interpunctuation) {
+            if (! fragment.type) {
                 return i;
             }
         }
 
         return this.state.fragmentIndex;
+    }
+
+    /**
+     * Scrolling event triggered by the window.
+     * @param {Event} ev 
+     */
+    onWindowScroll(ev) {
+        if (! this.fragmentContainer) {
+            return;
+        }
+
+        const containerRect = this.fragmentContainer.getBoundingClientRect();
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        
+        const overlay = (viewportHeight - containerRect.bottom < viewportHeight * 0.3) && // Details (not overlay) inferred to require at least 30 % of available height 
+            containerRect.top <= viewportHeight * 0.4; // restrict overlay until the fragment is visible, which is relevant on smaller devices
+        const change = this.state.detailsAsOverlay !== overlay;
+
+        if (! change) {
+            return;
+        }
+
+        this.setState({
+            detailsAsOverlay: overlay
+        });
+
+        // Add padding to the bottom of the document body to accomodate for the height of the overlay
+        if (overlay) {
+            document.body.classList.add('ed-fragment-details-overlaid');
+        } else {
+            document.body.classList.remove('ed-fragment-details-overlaid');
+        }
     }
 
     /**
@@ -162,6 +157,28 @@ class EDFragmentExplorer extends React.Component {
         EDConfig.message(EDConfig.messageNavigateName, data);
     }
 
+    renderFragment(paragraphIndex, mapping, fragmentIndex) {
+        let fragment = undefined;
+        let text = undefined;
+
+        if (Array.isArray(mapping)) {
+            fragment = this.props.fragments[mapping[0]];
+
+            if (mapping.length > 1) {
+                text = mapping[1];
+            }
+        } else {
+            text = mapping;
+        }
+
+        const selected = fragment && fragment.id === this.props.fragmentId;
+        return <EDFragment fragment={fragment}
+                           text={text}
+                           key={`p${paragraphIndex}.f${fragmentIndex}`}
+                           selected={selected}
+                           onClick={this.onFragmentClick.bind(this)} />;
+    }
+
     render() {
         let section = null;
         let fragment = null;
@@ -179,65 +196,64 @@ class EDFragmentExplorer extends React.Component {
         const nextIndex = this.nextFragmentIndex();
 
         return <div className="well ed-fragment-navigator">
-            <div className="row">
+            <div className="row" ref={elem => this.fragmentContainer = elem}>
                 <div className="col-md-12 col-lg-6">
-                {this.state.fragmentLines.map((fragments, fi) => 
-                    <p className="tengwar ed-tengwar-fragments" key={`tngc${fi}`}>
-                        {fragments.map((f, i) => <EDTengwarFragment fragment={f}
-                                                                    previousFragment={i > 0 ? fragments[i - 1] : undefined}
-                                                                    key={`tng${fi}.${f.id}`}
-                                                                    selected={f.id === this.props.fragmentId} />)}
+                {this.props.tengwar.map((paragraph, fi) => 
+                    <p className="tengwar ed-tengwar-fragments" key={`p${fi}`}>
+                        {paragraph.map(this.renderFragment.bind(this, fi))}
                     </p>
                 )}
                 </div>
                 <hr className="hidden-lg" />
                 <div className="col-md-12 col-lg-6">
-                {this.state.fragmentLines.map((fragments, fi) => 
-                    <p className="ed-elvish-fragments" key={`frgc${fi}`}>
-                        { fragments.map((f, i) => <EDFragment fragment={f}
-                                                              previousFragment={i > 0 ? fragments[i - 1] : undefined}
-                                                              key={`frg${fi}.${f.id}`} 
-                                                              selected={f.id === this.props.fragmentId}
-                                                              onClick={this.onFragmentClick.bind(this)} />) }
+                {this.props.latin.map((paragraph, fi) => 
+                    <p className="ed-elvish-fragments" key={`p${fi}`}>
+                        {paragraph.map(this.renderFragment.bind(this, fi))}
                     </p>
                 )}
                 </div>
             </div>
             <hr className="hidden-xs hidden-sm hidden-md" />
-            <nav>
-                <ul className="pager">
-                    <li className={classNames('previous', { 'hidden': previousIndex === this.state.fragmentIndex })}>
-                        <a href="#" onClick={ev => this.onNavigate(ev, previousIndex)}>&larr; {this.props.fragments[previousIndex].fragment}</a>
-                    </li>
-                    <li className={classNames('next', { 'hidden': nextIndex === this.state.fragmentIndex })}>
-                        <a href="#" onClick={ev => this.onNavigate(ev, nextIndex)}>{this.props.fragments[nextIndex].fragment} &rarr;</a>
-                    </li>
-                </ul>
-            </nav>
-            {this.props.loading
-                ? <div className="sk-spinner sk-spinner-pulse"></div>
-                : (section ? (<div>
-                    <div>
-                        {section.glosses.map(g => <EDBookGloss gloss={g}
-                                                            language={section.language}
-                                                            key={g.id} 
-                                                            disableTools={true}
-                                                            onReferenceLinkClick={this.onReferenceLinkClick.bind(this)} />)}
+            <div className={classNames('ed-fragment-details', { 'overlay': this.state.detailsAsOverlay })}>
+                <small className="text-info">This is a floating overlay. You can scroll within.</small>
+                <nav>
+                    <ul className="pager">
+                        <li className={classNames('previous', { 'hidden': previousIndex === this.state.fragmentIndex })}>
+                            <a href="#" onClick={ev => this.onNavigate(ev, previousIndex)}>&larr; {this.props.fragments[previousIndex].fragment}</a>
+                        </li>
+                        {fragment ? 
+                        <li>
+                            <strong>{fragment.fragment}</strong>
+                        </li> : ''}
+                        <li className={classNames('next', { 'hidden': nextIndex === this.state.fragmentIndex })}>
+                            <a href="#" onClick={ev => this.onNavigate(ev, nextIndex)}>{this.props.fragments[nextIndex].fragment} &rarr;</a>
+                        </li>
+                    </ul>
+                </nav>
+                {this.props.loading
+                    ? <div className="sk-spinner sk-spinner-pulse"></div>
+                    : (section ? (<div ref={elem => this.fragmentDetails = elem}>
+                        <div>{fragment.comments ? parser.parse(fragment.comments) : ''}</div>
+                        <div>
+                            <span className="label label-success ed-inflection">{fragment.speech}</span>
+                            {' '}
+                            {fragment.inflections.map((infl, i) => 
+                                <span key={`infl${fragment.id}-${i}`}>
+                                    <span className="label label-success ed-inflection">{infl.name}</span>
+                                    &nbsp;
+                                </span>
+                            )}
+                        </div>
+                        <div>
+                            {section.glosses.map(g => <EDBookGloss gloss={g}
+                                                                language={section.language}
+                                                                key={g.id} 
+                                                                disableTools={true}
+                                                                onReferenceLinkClick={this.onReferenceLinkClick.bind(this)} />)}
+                        </div>
                     </div>
-                    <hr />
-                    <div>
-                        <span className="label label-success ed-inflection">{fragment.speech}</span>
-                        {' '}
-                        {fragment.inflections.map((infl, i) => 
-                            <span key={`infl${fragment.id}-${i}`}>
-                                <span className="label label-success ed-inflection">{infl.name}</span>
-                                &nbsp;
-                            </span>
-                        )}
-                    </div>
-                    <div>{fragment.comments ? parser.parse(fragment.comments) : ''}</div>
-                </div>
-            ) : '')}
+                ) : '')}
+            </div>
         </div>;
     }
 }
@@ -245,6 +261,8 @@ class EDFragmentExplorer extends React.Component {
 const mapStateToProps = (state) => {
     return {
         fragments: state.fragments,
+        latin: state.latin,
+        tengwar: state.tengwar,
         fragmentId: state.fragmentId,
         bookData: state.bookData,
         loading: state.loading

@@ -4,7 +4,7 @@ import classNames from 'classnames';
 import axios from 'axios';
 import { polyfill as enableSmoothScrolling } from 'smoothscroll-polyfill';
 import EDConfig from 'ed-config';
-import { requestTranslationGroups } from '../../actions/admin';
+import { requestTranslationGroups, componentIsReady } from '../../actions/admin';
 import { EDStatefulFormComponent } from 'ed-form';
 import EDMarkdownEditor from 'ed-components/markdown-editor';
 import EDLanguageSelect from 'ed-components/language-select';
@@ -31,6 +31,7 @@ class EDTranslationForm extends EDStatefulFormComponent {
             source: '',
             tengwar: '',
             comments: '',
+            notes: '',
             sense: undefined,
             keywords: [],
             is_uncertain: false,
@@ -41,7 +42,10 @@ class EDTranslationForm extends EDStatefulFormComponent {
     }
 
     componentWillMount() {
-        this.props.dispatch(requestTranslationGroups());
+        this.props.dispatch(this.props.admin
+            ? requestTranslationGroups() // admin view requires information from the server
+            : componentIsReady()
+        );
     }
 
     componentDidMount() {
@@ -58,6 +62,7 @@ class EDTranslationForm extends EDStatefulFormComponent {
             translation:          props.translation || '',
             source:               props.transationSource || '',
             comments:             props.translationComments || '',
+            notes:                props.translationNotes || '',
             is_uncertain:         props.translationUncertain || 0,
             is_rejected:          props.translationRejected || 0,
             tengwar:              props.translationTengwar || '',
@@ -71,17 +76,26 @@ class EDTranslationForm extends EDStatefulFormComponent {
         const state = this.state;
         const payload = {
             ...state,
-            // optional parameters beneath
-            id:                   state.id || undefined,
-            tengwar:              state.tengwar.length > 0 ? state.tengwar : undefined,
-            translation_group_id: state.translation_group_id || undefined,
+            id:      state.id || undefined,
+            tengwar: state.tengwar.length > 0 ? state.tengwar : undefined
         };
 
         let promise;
-        if (payload.id) {
-            promise = axios.put(`/admin/translation/${payload.id}`, payload);
+        if (this.props.admin) {
+            // optional parameter 
+            payload.translation_group_id = state.translation_group_id || undefined;
+            
+            if (payload.id) {
+                promise = axios.put(`/admin/translation/${payload.id}`, payload);
+            } else {
+                promise = axios.post('/admin/translation', payload);
+            }
         } else {
-            promise = axios.post('/admin/translation', payload);
+            if (payload.id) {
+                promise = axios.put(`/dashboard/translation-review/${payload.id}`, payload);
+            } else {
+                promise = axios.post('/dashboard/translation-review', payload);
+            }
         }
 
         promise.then(request => this.onValidateSuccess(request, payload),
@@ -131,7 +145,7 @@ class EDTranslationForm extends EDStatefulFormComponent {
             return <div className="sk-spinner sk-spinner-pulse"></div>;
         }
 
-        const language = EDConfig.languageById(this.state.language_id);
+        const language = EDConfig.findLanguage(this.state.language_id);
 
         return <form onSubmit={this.onSubmit.bind(this)}>
             <EDErrorList errors={this.state.errors} />
@@ -145,6 +159,11 @@ class EDTranslationForm extends EDStatefulFormComponent {
             <p>
                 Please be as thorough as possible, and make sure to <em>always include sources!</em>
             </p>
+            <div className="form-group">
+                <label htmlFor="ed-translation-language" className="control-label">Language</label>
+                <EDLanguageSelect className="form-control" componentId="ed-translation-language" componentName="language_id" 
+                    onChange={ev => super.onChange(ev, 'number')} value={this.state.language_id} />
+            </div>
             <div className="form-group">
                 <label htmlFor="ed-translation-word" className="control-label">Word</label>
                 <input type="text" className="form-control" id="ed-translation-word" name="word" 
@@ -183,6 +202,7 @@ class EDTranslationForm extends EDStatefulFormComponent {
                 <input type="text" className="form-control" id="ed-translation-source" name="source" 
                     value={this.state.source} onChange={super.onChange.bind(this)} />
             </div>
+            {this.props.admin ?
             <div className="form-group">
                 <label htmlFor="ed-translation-group" className="control-label">Group</label>
                 <select name="translation_group_id" id="ed-translation-group" className="form-control"
@@ -190,17 +210,13 @@ class EDTranslationForm extends EDStatefulFormComponent {
                     <option value="0"></option>
                     {this.props.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
-            </div>
+            </div> : ''}
+            {this.props.admin ?
             <div className="form-group">
                 <label htmlFor="ed-translation-account" className="control-label">Account</label>
                 <EDAccountSelect componentId="ed-translation-account" componentName="account_id" 
                     value={this.state.account_id} onChange={super.onChange.bind(this)} required={true} />
-            </div>
-            <div className="form-group">
-                <label htmlFor="ed-translation-language" className="control-label">Language</label>
-                <EDLanguageSelect className="form-control" componentId="ed-translation-language" componentName="language_id" 
-                    onChange={ev => super.onChange(ev, 'number')} value={this.state.language_id} />
-            </div>
+            </div> : ''}
             <div className="checkbox">
                 <label>
                     <input type="checkbox" name="is_uncertain"
@@ -220,6 +236,12 @@ class EDTranslationForm extends EDStatefulFormComponent {
                 <EDMarkdownEditor componentId="ed-translation-comments" componentName="comments" rows={8}
                     value={this.state.comments} onChange={super.onChange.bind(this)} />
             </div>
+            {! this.props.admin ?
+            <div className="form-group">
+                <label htmlFor="ed-notes" className="control-label">Notes for reviewer</label>
+                <textarea className="form-control" name="notes" id="ed-notes" rows={4}
+                    value={this.state.notes} onChange={super.onChange.bind(this)} />
+            </div> : ''}
             <p className="alert alert-info">
                 <strong>Important!</strong> Please <em>only</em> confirm your changes <em>if they are worth saving,</em>{' '}
                 because a lot of things happen under the hood when  you press that button. To undo your changes, please press the {' '}
@@ -228,7 +250,7 @@ class EDTranslationForm extends EDStatefulFormComponent {
             <nav>
                 <ul className="pager">
                     <li className="previous">
-                        <a href="/admin/translation">
+                        <a href={this.props.admin ? '/admin/translation' : '/dashboard/translation-review'}>
                             <span className="glyphicon glyphicon-remove"></span>
                             {' '}
                             Cancel
@@ -236,7 +258,7 @@ class EDTranslationForm extends EDStatefulFormComponent {
                     </li>
                     <li className="next">
                         <a href="#" onClick={this.onSubmit.bind(this)}>
-                            Confirm and save
+                            {this.props.confirmButtonText}
                             &nbsp;
                             &nbsp;
                             <span className="glyphicon glyphicon-save"></span></a>
@@ -248,7 +270,9 @@ class EDTranslationForm extends EDStatefulFormComponent {
 }
 
 EDTranslationForm.defaultProps = {
-    loading: true
+    loading: true,
+    admin: false,
+    confirmButtonText: 'Confirm and save'
 };
 
 const mapStateToProps = state => {
@@ -264,6 +288,7 @@ const mapStateToProps = state => {
         translation:           state.translation,
         transationSource:      state.source,
         translationComments:   state.comments,
+        translationNotes:      state.notes,
         translationUncertain:  state.is_uncertain,
         translationRejected:   state.is_rejected,
         translationKeywords:   state._keywords,

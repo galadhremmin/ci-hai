@@ -3,6 +3,7 @@ import EDConfig from 'ed-config';
 export const ED_SET_TRANSLATION_DATA = 'ED_SET_TRANSLATION_DATA';
 export const ED_REQUEST_TRANSLATION_GROUPS = 'ED_REQUEST_TRANSLATION_GROUPS';
 export const ED_RECEIVE_TRANSLATION_GROUPS = 'ED_RECEIVE_TRANSLATION_GROUPS';
+export const ED_COMPONENT_IS_READY         = 'ED_COMPONENT_IS_READY';
 
 const EDTranslationAdminReducer = (state = {
     id: 0,
@@ -16,13 +17,14 @@ const EDTranslationAdminReducer = (state = {
     speech_id: 0,
     translation_group_id: 0,
     comments: '',
+    notes: '',
     sense: undefined,
-    _keywords: [],
     is_uncertain: false,
     is_rejected: false,
     languages: EDConfig.languages(),
     groups: undefined,
-    loading: true
+    loading: true,
+    _keywords: []
 }, action) => {
     switch (action.type) {
         case ED_SET_TRANSLATION_DATA:
@@ -40,6 +42,12 @@ const EDTranslationAdminReducer = (state = {
             return {
                 ...state,
                 groups: action.groups,
+                loading: false
+            };
+        
+        case ED_COMPONENT_IS_READY:
+            return {
+                ...state,
                 loading: false
             };
 

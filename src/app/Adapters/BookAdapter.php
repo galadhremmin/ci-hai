@@ -28,12 +28,18 @@ class BookAdapter
     {
         $numberOfTranslations = count($translations);
 
+        // Reverses phonetic approximations  
+        if ($word !== null) {
+            $word = StringHelper::reverseNormalization($word);
+        }
+        
         // * Optimize by dealing with some edge cases first
         //    - No translation results
         if ($numberOfTranslations < 1) {
             return [
                 'word' => $word,
-                'sections' => []
+                'sections' => [],
+                'single' => false
             ];
         }
 
@@ -67,7 +73,8 @@ class BookAdapter
                         'language' => $language,
                         'glosses'  => [ self::adaptTranslation($translation, new Collection([$language]), $inflections, $commentsById, $atomDate, $linker) ]
                     ]
-                ]
+                ],
+                'single' => true
             ], 1);
         }
 
@@ -130,7 +137,8 @@ class BookAdapter
             return self::assignColumnWidths([
                 'word' => $word,
                 'sections' => $sections,
-                'languages' => null
+                'languages' => null,
+                'single' => false
             ], count($allLanguages));
 
         } 
@@ -141,11 +149,12 @@ class BookAdapter
                 'language' => null,
                 'glosses'  => $gloss2LanguageMap[0]
             ]],
-            'languages' => $allLanguages
+            'languages' => $allLanguages,
+            'single'    => false
         ];
     }
 
-    private static function adaptTranslation(\stdClass $translation, Collection $languages, array $inflections, array $commentsById, 
+    private static function adaptTranslation($translation, Collection $languages, array $inflections, array $commentsById, 
         bool $atomDate, LinkHelper $linker) 
     {
         // Filter among the inflections, looking for references to the specified translation.
@@ -164,9 +173,14 @@ class BookAdapter
         }); // <-- infer success
 
         // Convert dates
-        $translation->created_at = Carbon::parse($translation->created_at);
-        if ($atomDate) {
-            $translation->created_at = $translation->created_at->toAtomString();
+        if (! ($translation->created_at instanceof Carbon)) {
+            $date = Carbon::parse($translation->created_at);
+            
+            if ($atomDate) {
+                $translation->created_at = $date->toAtomString();
+            } else {
+                $translation->created_at = $date;
+            }
         }
 
         // Create links upon the first element of each sentence fragment.
@@ -196,7 +210,7 @@ class BookAdapter
      * @param $translation
      * @param $word
      */
-    private static function calculateRating(\stdClass $translation, string $word)
+    private static function calculateRating($translation, string $word)
     {
         $rating = 0;
 

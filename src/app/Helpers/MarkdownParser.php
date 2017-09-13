@@ -18,6 +18,25 @@ class MarkdownParser extends \Parsedown
     }
 
     /**
+     * Overrides the original elements method, which combines all elements into a HTML string.
+     * This method is overridden to remove excessive new lines being inserted before every element. 
+     *
+     * @param array $Elements
+     * @return void
+     */
+    protected function elements(array $Elements)
+    {
+        $markup = '';
+
+        foreach ($Elements as $Element)
+        {
+            $markup .= $this->element($Element);
+        }
+
+        return $markup;
+    }
+
+    /**
      * Adds bootstrap classes to the table element.
      * 
      */
@@ -92,6 +111,7 @@ class MarkdownParser extends \Parsedown
 
         // remove footnotes, in case they were  imported by accident
         $word = str_replace(['¹', '²', '³'], '', $word);
+        $normalizedWord = StringHelper::normalize($word);
 
         return [
             'extent' => $wordLength,
@@ -100,10 +120,10 @@ class MarkdownParser extends \Parsedown
                 'handler' => 'line',
                 'text' => $word,
                 'attributes' => [
-                    'href' => '/w/' . urlencode($word),
+                    'href' => '/w/' . urlencode($normalizedWord),
                     'title' => 'Navigate to '.$word.'.',
                     'class' => 'ed-word-reference',
-                    'data-word' => StringHelper::normalize($word)
+                    'data-word' => $normalizedWord
                 ]
             ]
         ];

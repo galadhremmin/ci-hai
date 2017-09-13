@@ -1,33 +1,24 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: zanathel
- * Date: 4/16/17
- * Time: 6:06 PM
- */
-
 namespace App\Adapters;
 
-
 use App\Helpers\MarkdownParser;
+use App\Adapters\{ LatinSentenceBuilder, TengwarSentenceBuilder };
 use Illuminate\Support\Collection;
 
 class SentenceAdapter
 {
-    public function adaptFragments(Collection $fragments, $transformMarkdownToHtml = true)
+    public function adaptFragments(Collection $fragmentRows, $transformMarkdownToHtml = true)
     {
-        $result = new Collection();
+        $fragments = [];
         $markdownParser = new MarkdownParser();
 
-        foreach ($fragments as $fragment) {
+        foreach ($fragmentRows as $fragment) {
             $data = [
                 'id'               => $fragment->id,
                 'translation_id'   => $fragment->translation_id,
+                'type'             => $fragment->type,
                 'fragment'         => $fragment->fragment,
                 'tengwar'          => $fragment->tengwar,
-                'interpunctuation' => $fragment->isPunctuationOrWhitespace(),
-                'is_dot'           => $fragment->isDot(),
-                'is_linebreak'     => $fragment->is_linebreak,
                 'speech'           => $fragment->speech_id ? $fragment->speech->name : null,
                 'speech_id'        => $fragment->speech_id,
                 'comments'         => !empty($fragment->comments)
@@ -48,7 +39,32 @@ class SentenceAdapter
                 $data['inflections'][] = $inflection;
             }
 
-            $result->push($data);
+            $fragments[] = $data;
+        }
+
+        $result = [
+            'fragments' => $fragments
+        ];
+
+        $sentences = $this->adaptFragmentsToSentences($fragments);
+        foreach ($sentences as $name => $paragraphs) {
+            $result[$name] = $paragraphs;
+        }
+
+        return $result;
+    }
+
+    public function adaptFragmentsToSentences(array $adaptedFragments, string $builderName = null) {
+        $result = [];
+
+        $sentenceBuilders = config('ed.required_sentence_builders');
+        foreach ($sentenceBuilders as $name => $class) {
+            if ($builderName !== null && $name !== $builderName) {
+                continue;
+            }
+
+            $builder = new $class($adaptedFragments);
+            $result[$name] = $builder->build();
         }
 
         return $result;

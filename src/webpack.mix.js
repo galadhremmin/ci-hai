@@ -16,9 +16,11 @@ mix.webpackConfig({
         alias: {
             'elfdict': path.resolve(__dirname, 'resources/assets/js/_ed/'),
 
+            'ed-components/dialog': 'elfdict/components/dialog.jsx',
             'ed-components/error-list': 'elfdict/components/error-list.jsx',
             'ed-components/markdown-editor': 'elfdict/components/markdown-editor.jsx',
             'ed-components/language-select': 'elfdict/components/language-select.jsx',
+            'ed-components/translation-select': 'elfdict/components/translation-select.jsx',
 
             'ed-config': 'elfdict/config.js',
             'ed-form': 'elfdict/form.js',
@@ -31,13 +33,17 @@ mix.webpackConfig({
 mix.extract([
     'react', 'react-dom', 'react-router-dom',
     'react-redux', 'redux', 'redux-thunk',
-    'react-autosuggest',
+    'react-autosuggest', 
     'html-to-react',
     'axios',
     'classnames',
     'smoothscroll-polyfill',
+    /* These components are excuded from _vendor.js_ as they are limited to restricted visitors 
+    'ed-components/dialog',
     'ed-components/error-list',
+    'ed-components/translation-select',
     'ed-components/markdown-editor',
+    */
     'ed-components/language-select',
     'ed-config',
     'ed-form',
@@ -51,16 +57,24 @@ mix.react([
     'resources/assets/js/search/index.jsx'
 ], 'public/js/global.js');
 
+mix.react([
+    'resources/assets/js/_plugins-restricted/index.jsx'
+], 'public/js/global-plugins-restricted.js');
+
+mix.react([
+    'resources/assets/js/_plugins-admin/index.jsx'
+], 'public/js/global-plugins-admin.js');
+
 mix.combine([
-    'resources/assets/js/_shared/glaemscribe/glaemscribe.js',
-    'resources/assets/js/_shared/glaemscribe/charsets/tengwar_ds_parmaite.cst.js',
-    'resources/assets/js/_shared/glaemscribe/modes/adunaic.glaem.js',
-    'resources/assets/js/_shared/glaemscribe/modes/blackspeech.glaem.js',
-    'resources/assets/js/_shared/glaemscribe/modes/quenya.glaem.js',
-    'resources/assets/js/_shared/glaemscribe/modes/sindarin-beleriand.glaem.js',
-    'resources/assets/js/_shared/glaemscribe/modes/sindarin.glaem.js',
-    'resources/assets/js/_shared/glaemscribe/modes/telerin.glaem.js',
-    'resources/assets/js/_shared/glaemscribe/modes/westron.glaem.js',
+    'node_modules/glaemscribe/js/glaemscribe.js',
+    'node_modules/glaemscribe/js/charsets/tengwar_ds_annatar.cst.js',
+    'node_modules/glaemscribe/js/modes/adunaic.glaem.js',
+    'node_modules/glaemscribe/js/modes/blackspeech.glaem.js',
+    'node_modules/glaemscribe/js/modes/quenya.glaem.js',
+    'node_modules/glaemscribe/js/modes/sindarin-beleriand.glaem.js',
+    'node_modules/glaemscribe/js/modes/sindarin.glaem.js',
+    'node_modules/glaemscribe/js/modes/telerin.glaem.js',
+    'node_modules/glaemscribe/js/modes/westron.glaem.js',
 ], 'public/js/glaemscribe.js');
 
 mix.js([
@@ -91,6 +105,10 @@ mix.js([
 mix.js([
     'resources/assets/js/flashcard/index.jsx'
 ], 'public/js/flashcard.js');
+
+mix.js([
+    'resources/assets/js/system-errors/index.jsx'
+], 'public/js/system-errors-admin.js');
 
 //mix.copy('node_modules/tengwar/tengwar-parmaite.*', 'public/fonts/tengwar'); <~~ the parmaite font kit is/will be corrupted!
 mix.sass('resources/assets/sass/app.scss', 'public/css');

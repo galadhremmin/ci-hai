@@ -1,5 +1,6 @@
 import React from 'react';
 import { transcribe } from '../tengwar';
+import { Modal } from 'react-bootstrap';
 
 class EDTengwarInput extends React.Component {
     constructor(props) {
@@ -8,7 +9,8 @@ class EDTengwarInput extends React.Component {
         this.state = {
             ...(this.createStateForValue(props.value)),
             mode: props.tengwarMode || undefined,
-            subject: props.transcriptionSubject || undefined
+            subject: props.transcriptionSubject || undefined,
+            showError: false
         };
     }
 
@@ -20,12 +22,12 @@ class EDTengwarInput extends React.Component {
         let state = {};
         let change = false;
 
-        if (props.tengwarMode) {
+        if (props.tengwarMode !== undefined) {
             state.mode = props.tengwarMode;
             change = true;
         }
 
-        if (props.transcriptionSubject) {
+        if (props.transcriptionSubject !== undefined) {
             state.subject = props.transcriptionSubject;
             change = true;
         }
@@ -120,6 +122,7 @@ class EDTengwarInput extends React.Component {
         const mode = this.state.mode;
         const subject = this.state.subject;
         if (! mode || ! subject) {
+            this.setState({showError: true});
             return;
         }
 
@@ -127,13 +130,31 @@ class EDTengwarInput extends React.Component {
         this.setValue(transcription);
     }
 
+    onModalClose() {
+        this.setState({showError: false});
+    }
+
     render() {
-        return <div className="input-group">
-            <input id={this.props.componentId} className="form-control tengwar" type="text" ref={input => this.tengwarInput = input} 
-                value={this.state.value} onChange={this.onTengwarChange.bind(this)} />
-            <div className="input-group-addon">
-                <a href="#" onClick={this.onTranscribeClick.bind(this)}>Transcribe</a>
+        return <div>
+            <div className="input-group">
+                <input id={this.props.componentId} className="form-control tengwar" type="text" ref={input => this.tengwarInput = input} 
+                    value={this.state.value} onChange={this.onTengwarChange.bind(this)} />
+                <div className="input-group-addon">
+                    <a href="#" onClick={this.onTranscribeClick.bind(this)}>Transcribe</a>
+                </div>
             </div>
+            <Modal bsSize="small" show={this.state.showError} onHide={this.onModalClose.bind(this)}>
+                <Modal.Header>
+                    <Modal.Title>Cannot transcribe &ldquo;{this.state.subject}&rdquo;</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <p>You must select a language that the transcription service supports.</p>
+                    <p>If the language you have selected is not supported by the transcriber, you will have to perform the transcription manually.</p>
+                </Modal.Body>
+                <Modal.Footer>
+                  <button onClick={this.onModalClose.bind(this)} className="btn btn-primary">OK</button>
+                </Modal.Footer>
+            </Modal>
         </div>;
     }
 }

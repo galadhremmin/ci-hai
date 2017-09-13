@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
@@ -68,5 +69,36 @@ class Account extends Authenticatable
     public function getRememberToken()
     {
         return $this->remember_token;
+    }
+    
+    /**
+     * Determines whether the client has specifically requested to operate in incognito mode.
+     *
+     * @return boolean
+     */
+    public function isIncognito() 
+    {
+        if (! $this->isAdministrator()) {
+            return false;
+        }
+
+        $request = request();
+        return $request !== null && $request->cookie('ed-usermode') === 'incognito';
+    }
+
+    /**
+     * Registers a cookie specifying whether the client requests to operate in an incognito mode.
+     *
+     * @param bool $v - whether to go incognito or not (=false).
+     * @return void
+     */
+    public function setIncognito(bool $v)
+    {
+        $request = request();
+        if ($request !== null) {
+            $cookie = Cookie::make('ed-usermode', $v ? 'incognito' : 'visible', 60*24, null, null, 
+                isset($_SERVER['HTTPS']) /* = secure */, true /* = HTTP only */);
+            Cookie::queue($cookie);
+        }
     }
 }

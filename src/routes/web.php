@@ -56,6 +56,14 @@ Route::group([ 'middleware' => 'auth' ], function () {
     Route::post('/author/edit/{id?}', [ 'uses' => 'AuthorController@update' ])->name('author.update-profile');
 });
 
+Route::group([ 
+    'prefix'     => 'admin', 
+    'middleware' => ['auth', 'auth.require-role:Administrators']  
+], function () {
+
+    Route::get('user/incognito', 'DashboardController@setIncognito')->name('dashboard.incognito');
+});
+
 // Authentication
 Route::get('/login', 'SocialAuthController@login')->name('login');
 Route::get('/logout', 'SocialAuthController@logout')->name('logout');
@@ -63,28 +71,59 @@ Route::get('/federated-auth/redirect/{providerName}', 'SocialAuthController@redi
     ->name('auth.redirect');
 Route::get('/federated-auth/callback/{providerName}', 'SocialAuthController@callback');
 
-// Resources
+// Sitemap
+Route::get('sitemap/{context}', 'SitemapController@index');
+
+// Restricted resources
+Route::group([ 
+    'namespace'  => 'Resources', 
+    'prefix'     => 'dashboard', 
+    'middleware' => ['auth']
+], function () {
+
+    // Contribute
+    Route::resource('translation-review', 'TranslationReviewController');
+    Route::get('translation-review/{id}/destroy', 'TranslationReviewController@confirmDestroy')->name('translation-review.confirm-destroy');
+});
+
+// Admin resources
 Route::group([ 
         'namespace'  => 'Resources', 
         'prefix'     => 'admin', 
         'middleware' => ['auth', 'auth.require-role:Administrators'] 
     ], function () {
 
-    Route::resource('speech', 'SpeechController');
-    Route::resource('inflection', 'InflectionController');
-    Route::resource('sentence', 'SentenceController');
-    Route::resource('translation', 'TranslationController');
+    Route::resource('inflection', 'InflectionController', [
+        'except' => ['show']
+    ]);
+    Route::resource('sentence', 'SentenceController', [
+        'except' => ['show']
+    ]);
+    Route::resource('speech', 'SpeechController', [
+        'except' => ['show']
+    ]);
+    Route::resource('translation', 'TranslationController', [
+        'except' => ['show']
+    ]);
     Route::resource('system-error', 'SystemErrorController', ['only' => [
         'index'
     ]]);
 
+    Route::get('sentence/confirm-destroy/{id}', 'SentenceController@confirmDestroy')->name('sentence.confirm-destroy');
     Route::post('sentence/validate', 'SentenceController@validatePayload');
     Route::post('sentence/validate-fragment', 'SentenceController@validateFragments');
+    Route::post('sentence/parse-fragment/{name}', 'SentenceController@parseFragments');
 
     Route::get('translation/list/{id}', 'TranslationController@listForLanguage')->name('translation.list');
+
+    Route::get('translation-review/list', 'TranslationReviewController@list')->name('translation-review.list');
+    Route::get('translation-review/{id}/reject', 'TranslationReviewController@confirmReject')->name('translation-review.confirm-reject');
+    Route::put('translation-review/{id}/approve', 'TranslationReviewController@updateApprove')->name('translation-review.approve');
+    Route::put('translation-review/{id}/reject', 'TranslationReviewController@updateReject')->name('translation-review.reject');
+    
 });
 
-// API
+// Public unrestricted API
 Route::group([ 
         'namespace' => 'Api\v1', 
         'prefix'    => 'api/v1'
@@ -104,6 +143,7 @@ Route::group([
     ]]);
 });
 
+// Public, throttled API
 Route::group([ 
         'namespace'  => 'Api\v1', 
         'prefix'     => 'api/v1',
@@ -114,7 +154,7 @@ Route::group([
     Route::post('utility/error',                 [ 'uses' => 'UtilityApiController@logError' ]);
 });
 
-// API
+// Restricted API
 Route::group([ 
         'namespace'  => 'Api\v1', 
         'prefix'     => 'api/v1',
@@ -127,9 +167,12 @@ Route::group([
 
     Route::post('forum/like/{id}',   [ 'uses' => 'ForumApiController@storeLike'   ]);
     Route::delete('forum/like/{id}', [ 'uses' => 'ForumApiController@destroyLike' ]);
+
+    Route::get('book/word/{id}',  [ 'uses' => 'BookApiController@getWord'   ]);
+    Route::post('book/word/find', [ 'uses' => 'BookApiController@findWord'  ]);
 });
 
-// API for administrators
+// Admin API
 Route::group([ 
         'namespace' => 'Api\v1', 
         'prefix'    => 'api/v1',
@@ -140,7 +183,5 @@ Route::group([
     Route::get('account/{id}',   [ 'uses' => 'AccountApiController@getAccount' ]);
     Route::post('account/find',  [ 'uses' => 'AccountApiController@findAccount' ]);
 
-    Route::get('book/word/{id}',  [ 'uses' => 'BookApiController@getWord'   ]);
     Route::get('book/group',      [ 'uses' => 'BookApiController@getGroups' ]);
-    Route::post('book/word/find', [ 'uses' => 'BookApiController@findWord'  ]);
 });

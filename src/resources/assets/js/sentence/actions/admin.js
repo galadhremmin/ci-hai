@@ -1,13 +1,31 @@
 import { 
     SET_FRAGMENTS,
     SET_SENTENCE_DATA,
-    SET_FRAGMENT_DATA
+    SET_FRAGMENT_DATA,
+    SET_TENGWAR
 } from '../reducers/admin';
+import axios from 'axios';
 
 export const setFragments = fragments => {
+    return (dispatch, getState) => {
+        if (fragments === undefined) {
+            fragments = getState().fragments;
+        }
+
+        axios.post('/admin/sentence/parse-fragment/latin', { fragments }).then(response => {
+            dispatch({
+                type: SET_FRAGMENTS,
+                fragments,
+                latin: response.data
+            });
+        });
+    }
+};
+
+export const setTengwar = tengwar => {
     return {
-        type: SET_FRAGMENTS,
-        fragments
+        type: SET_TENGWAR,
+        tengwar
     };
 };
 
@@ -24,6 +42,7 @@ export const setSentenceData = data => {
  * @param {Object} data 
  */
 export const setFragmentData = (indexes, data) => {
+
     return {
         type: SET_FRAGMENT_DATA,
         indexes,

@@ -1,7 +1,7 @@
 @inject('link', 'App\Helpers\LinkHelper')
 @extends('_layouts.default')
 
-@section('title', 'Phrases')
+@section('title', $sentence->name . ' (' . $language->name.')')
 @section('body')
 
   {!! Breadcrumbs::render('sentence.public.sentence', $language->id, $language->name,
@@ -23,12 +23,16 @@
   @endif
 
   <div id="ed-fragment-navigator"></div>
-  <script type="application/json" id="ed-preload-fragments">{!! $fragments !!}</script>
+  <script type="application/json" id="ed-preload-sentence-data">{!! json_encode($sentenceData) !!}</script>
 
   {!! $sentence->long_description !!}
 
   @if (Auth::check() && Auth::user()->isAdministrator())
   <p class="text-right">
+    <a href="{{ route('sentence.confirm-destroy', [ 'id' => $sentence->id ]) }}" class="btn btn-default">
+      <span class="glyphicon glyphicon-trash"></span>
+      Delete
+    </a>
     <a href="{{ route('sentence.edit', [ 'id' => $sentence->id ]) }}" class="btn btn-default">
       <span class="glyphicon glyphicon-edit"></span>
       Edit phrase

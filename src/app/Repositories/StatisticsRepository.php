@@ -2,33 +2,35 @@
 
 namespace App\Repositories;
 
-use App\Models\Sentence;
-use App\Models\Word;
-use App\Models\Translation;
-use App\Models\Account;
+use App\Models\{ Account, ForumPostLike, Sentence, Translation, Word, FlashcardResult };
 
 class StatisticsRepository
 {
     public function getStatisticsForAccount(Account $account)
     {
-        $noOfWords = Word::where('account_id', '=', $account->id)
+        $noOfWords = Word::forAccount($account->id)
             ->count();
 
         $noOfTranslations = Translation::notDeleted()
-            ->where('account_id', $account->id)
+            ->forAccount($account->id)
             ->count();
 
         $noOfSentences = Sentence::approved()
-            ->where('account_id', $account->id)
+            ->forAccount($account->id)
             ->count();
 
-        $noOfThanks = 0;
+        $noOfThanks = ForumPostLike::forAccount($account->id)
+            ->count();
+
+        $noOfFlashcards = FlashcardResult::forAccount($account->id)
+            ->count();
 
         return [
             'noOfWords'        => $noOfWords,
             'noOfTranslations' => $noOfTranslations,
             'noOfSentences'    => $noOfSentences,
-            'noOfThanks'       => $noOfThanks
+            'noOfThanks'       => $noOfThanks,
+            'noOfFlashcards'   => $noOfFlashcards
         ];
     }
 }

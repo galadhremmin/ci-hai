@@ -4,7 +4,8 @@ namespace App\Repositories;
 
 use App\Helpers\LinkHelper;
 use App\Models\{ Account, AuditTrail, Favourite, FlashcardResult, ForumContext, ForumPost, Sentence, Translation };
-use Illuminate\Support\Facades\DB;
+
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Relations\Relation;
 
 class AuditTrailRepository
@@ -28,17 +29,25 @@ class AuditTrailRepository
         ]);
     }
 
-    public function get(int $numberOfRows)
+    public function get(int $noOfRows, int $skipNoOfRows = 0, $previousItem = null)
     {
-        $actions = AuditTrail::orderBy('id', 'desc')
+        $query = AuditTrail::orderBy('id', 'desc')
             ->with([
                 'account' => function ($query) {
                     $query->select('id', 'nickname');
                 },
                 'entity' => function () {}
-            ])
-            ->take(10)
-            ->get();
+            ]);
+        
+        if (! Auth::check() || ! Auth::user()->isAdministrator()) {
+            // Put audit trail actions here that only administrators should see.
+            $query = $query->where('is_admin', 0)
+                ->whereNotIn('action_id', [
+                    AuditTrail::ACTION_PROFILE_AUTHENTICATED
+                ]);
+        }
+        
+        $actions = $query->skip($skipNoOfRows)->take($noOfRows)->get();
 
         $trail = [];
         foreach ($actions as $action) {
@@ -82,6 +91,9 @@ class AuditTrailRepository
                     case AuditTrail::ACTION_PROFILE_EDIT_AVATAR:
                         $message = 'changed their avatar';
                         break;
+                    case AuditTrail::ACTION_PROFILE_AUTHENTICATED:
+                        $message = 'logged in';
+                        break;
                 }
 
             } else if ($action->entity instanceof ForumPost) {
@@ -121,20 +133,63 @@ class AuditTrailRepository
                 }
             }
 
-            $trail[] = [
+            // Some messages might be deliberately hidden or not yet supported -- skip them
+            if ($message === null) {
+                continue;
+            }
+
+            $item = [
                 'account_id'   => $action->account_id,
                 'account_name' => $action->account->nickname,
                 'created_at'   => $action->created_at,
                 'message'      => $message,
                 'entity'       => $entity
             ];
+
+            // merge equivalent audit trail items to avoid spamming the log with the same message.
+            if ($previousItem !== null && 
+                $previousItem['account_id'] === $item['account_id'] &&
+                $previousItem['message'] === $item['message'] &&
+                $previousItem['entity'] === $item['entity']) {
+
+                // choose the latest item
+                $trailLength = count($trail);
+                if ($trailLength < 1 || $previousItem['created_at'] > $item['created_at']) {
+                    // TODO: when $trailLength < 1, the $previousItem originated from the 'parent' invocation of this method, so we need to
+                    // TODO: figure out how to replace the $previousItem with the $item, in order to ensure that the _latest_ item is selected.
+                    //
+                    // ^ -- this is not done at the moment.
+                    continue;
+                }
+
+                $trail[$trailLength - 1] = $item;
+            } else {
+                $trail[] = $item;
+            }
+
+            $previousItem = $item;
         }
 
-        return $trail;
+        // count the number of missing items to the list and attempt to populate the list
+        // with remaining items.
+        $noOfMergers = count($actions) - count($trail); 
+        return $noOfMergers > 0 
+            ? array_merge($trail, $this->get($noOfMergers, $skipNoOfRows + $noOfRows, $previousItem))
+            : $trail;
     }
 
-    public function store(int $action, int $accountId, $entity)
+    public function store(int $action, $entity, int $userId = 0)
     {
+        if ($userId === 0) {
+            // Is the user authenticated?
+            if (! Auth::check()) {
+                return;
+            }
+
+            $userId = Auth::user()->id;
+        }
+
+        // Retrieve the associated morph map key based on the specified entity.
         $typeName = null;
         $map = Relation::morphMap();
         foreach ($map as $name => $className) {
@@ -148,11 +203,20 @@ class AuditTrailRepository
             throw new \Exception(get_class($entity).' is not supported.');
         }
 
+        // check whether the specified user is an administrator
+        $request = request();
+        $admin = false;
+        if ($request !== null) {
+            $user = $request->user();
+            $admin = $user !== null && $user->isIncognito();
+        }
+
         AuditTrail::create([
-            'account_id'  => $accountId,
+            'account_id'  => $userId,
             'entity_id'   => $entity->id,
             'entity_type' => $typeName,
-            'action_id'   => $action
+            'action_id'   => $action,
+            'is_admin'    => $admin
         ]);
     }
 }

@@ -1,13 +1,20 @@
 <!DOCTYPE html>
-<html lang="{{ config('app.locale') }}">
+<html lang="{{ config('ed.view_locale') }}" prefix="og: http://ogp.me/ns#">
 <head>
-  <title>@yield('title') - Parf Edhellen</title>
+  <title>@yield('title') - {{ config('ed.title') }}</title>
   <meta charset="UTF-8">
+  <meta property="og:title" content="@yield('title') - {{ config('ed.title') }}">
+  <meta property="og:description" content="{{ config('ed.description') }}">
+  <meta property="og:locale" content="{{ config('ed.view_locale') }}">
+  <meta name="description" content="{{ config('ed.description') }}">
   <meta name="keywords" content="sindarin, quenya, noldorin, quendya, elvish, tolkien, nandorin, ilkorin, black speech, westron">
-  <meta name="description" content="Parf Edhellen is one of the most comprehensive elvish dictionaries on the Internet, housing thousands of elvish names, words and phrases.">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <link href="/css/app.css" rel="stylesheet">
+  <meta name="theme-color" value="#333333">
+  <link rel="apple-touch-icon-precomposed" href="/img/favicons/apple-touch-icon-precomposed.png">
+  <link rel="icon" type="image/png" href="/img/favicons/favicon-194x194.png">
+  <link rel="manifest" href="/img/favicons/manifest.json">
   @if (!empty(config('ed.header_view')))
     @include(config('ed.header_view'))
   @endif
@@ -69,6 +76,13 @@
   <script type="text/javascript" src="/js/manifest.js"></script>
   <script type="text/javascript" src="/js/vendor.js"></script>
   <script type="text/javascript" src="/js/ie.js"></script>
+  @if (Auth::check())
+    @if (Auth::user()->isAdministrator())
+    <script type="text/javascript" src="/js/global-plugins-admin.js"></script>
+    @else
+    <script type="text/javascript" src="/js/global-plugins-restricted.js"></script>
+    @endif
+  @endif
   <script type="text/javascript" src="/js/global.js" async></script>
   @yield('scripts')
   @if (!empty(config('ed.footer_view')))

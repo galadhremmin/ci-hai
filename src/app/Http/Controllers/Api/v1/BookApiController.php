@@ -4,26 +4,16 @@ namespace App\Http\Controllers\Api\v1;
 
 use Illuminate\Http\Request;
 
-use App\Models\{ Translation, TranslationGroup, Word, ForumContext };
+use App\Traits\{ CanTranslateTrait, CanGetTranslationTrait };
+use App\Models\{ Translation, TranslationGroup, Word, ForumContext, Keyword };
 use App\Http\Controllers\Controller;
-use App\Repositories\{ ForumRepository, TranslationRepository, SentenceRepository };
-use App\Adapters\BookAdapter;
 use App\Helpers\StringHelper;
 
 class BookApiController extends Controller 
 {
-    protected $_forumRepository;
-    protected $_translationRepository;
-    protected $_sentenceRepository;
-    protected $_adapter;
-
-    public function __construct(ForumRepository $forumRepository, TranslationRepository $translationRepository,
-        SentenceRepository $sentenceRepository, BookAdapter $adapter)
-    {
-        $this->_forumRepository = $forumRepository;
-        $this->_translationRepository = $translationRepository;
-        $this->_sentenceRepository = $sentenceRepository;
-        $this->_adapter = $adapter;
+    use CanTranslateTrait, CanGetTranslationTrait { 
+        CanTranslateTrait::__construct insteadof CanGetTranslationTrait;
+        CanTranslateTrait::translate as protected doTranslate; 
     }
 
     /**
@@ -89,15 +79,17 @@ class BookApiController extends Controller
     {
         $this->validate($request, [
             'word'        => 'required',
+            'include_old' => 'required|boolean',
             'reversed'    => 'boolean',
-            'language_id' => 'numeric'
+            'language_id' => 'numeric',
         ]);
 
         $word       = StringHelper::normalize( $request->input('word'), /* accentsMatter: */ false, /* retainWildcard: */ true );
+        $includeOld = boolval($request->input('include_old'));
         $reversed   = $request->input('reversed') === true;
         $languageId = intval($request->input('language_id'));
 
-        $keywords = $this->_translationRepository->getKeywordsForLanguage($word, $reversed, $languageId);
+        $keywords = $this->_translationRepository->getKeywordsForLanguage($word, $reversed, $languageId, $includeOld);
         return $keywords;
     }
 
@@ -133,23 +125,16 @@ class BookApiController extends Controller
         $this->validate($request, [
             'word'        => 'required|max:255',
             'language_id' => 'sometimes|required|exists:languages,id',
+            'include_old' => 'sometimes|required|boolean',
             'inflections' => 'sometimes|boolean'
         ]);
 
         $word = StringHelper::normalize( $request->input('word') );
         $languageId = $request->has('language_id') ? intval($request->input('language_id')) : 0;
-        
-        $translations = $this->_translationRepository->getWordTranslations($word, $languageId);
-        $translationIds = array_map(function ($v) {
-                return $v->id;
-            }, $translations);
+        $includeOld = $request->has('include_old') ? boolval($request->input('include_old')) : true;
+        $inflections = $request->has('inflections') && $request->input('inflections');
 
-        $inflections = $request->has('inflections') && $request->input('inflections')
-            ? $this->_sentenceRepository->getInflectionsForTranslations($translationIds) : [];
-
-        $comments = $this->_forumRepository->getCommentCountForEntities(ForumContext::CONTEXT_TRANSLATION, $translationIds);
-        $model = $this->_adapter->adaptTranslations($translations, $inflections, $comments, $word);
-        return $model;
+        return $this->doTranslate($word, $languageId, $inflections, $includeOld);
     }
 
     /**
@@ -161,12 +146,11 @@ class BookApiController extends Controller
      */
     public function get(Request $request, int $translationId)
     {
-        $translation = $this->_translationRepository->getTranslation($translationId);
+        $translation = $this->getTranslation($translationId);
         if (! $translation) {
             return response(null, 404);
         }
 
-        $comments = $this->_forumRepository->getCommentCountForEntities(ForumContext::CONTEXT_TRANSLATION, [$translationId]);
-        return $this->_adapter->adaptTranslations([$translation], [/* no inflections */], $comments);
+        return $translation;
     }
 }

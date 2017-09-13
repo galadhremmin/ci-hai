@@ -9,12 +9,13 @@ import {
     SET_SELECTION
 } from '../reducers';
 
-export function requestResults(wordSearch, reversed, languageId) {
+export function requestResults(wordSearch, reversed, languageId, includeOld) {
     return {
         type: REQUEST_RESULTS,
         wordSearch,
         reversed,
-        languageId
+        languageId,
+        includeOld
     };
 }
 
@@ -55,17 +56,18 @@ export function setSelection(index) {
     };
 }
 
-export function fetchResults(word, reversed = false, language_id = 0) {
+export function fetchResults(word, reversed = false, language_id = 0, include_old = true) {
     if (!word || /^\s$/.test(word)) {
         return;
     }
 
     return dispatch => {
-        dispatch(requestResults(word, reversed, language_id));
+        dispatch(requestResults(word, reversed, language_id, include_old));
         axios.post(EDConfig.api('/book/find'), { 
             word, 
             reversed, 
-            language_id 
+            language_id,
+            include_old
         }).then(resp => {
             const results = resp.data.map(r => ({
                 word: r.k,
@@ -95,7 +97,14 @@ export function beginNavigation(word, normalizedWord, index, modifyState) {
     // When navigating using the browser's back and forward buttons,
     // the state needn't be modified.
     if (modifyState) {
-        window.history.pushState(null, title, address);
+        if (window.history.pushState !== undefined) {
+            window.history.pushState(null, title, address);
+        } else {
+            // If pushState isn't supported, do not even pretend to try to load react components for search results 
+            // for this deprecated browser.
+            window.setTimeout(() => window.location.href = address, 0);
+            return () => {};
+        }
     }
 
     // because most browsers doesn't change the document title when pushing state
@@ -104,7 +113,9 @@ export function beginNavigation(word, normalizedWord, index, modifyState) {
     return (dispatch, getState) => {
 
         // Retrieve language filter configuration
-        const language_id = getState().languageId || undefined;
+        const state = getState();
+        const language_id = state.languageId || undefined;
+        const include_old = state.includeOld;
 
         // Inform indirect listeners about the navigation
         const event = new CustomEvent('ednavigate', { detail: { address, word, language_id } });
@@ -115,7 +126,8 @@ export function beginNavigation(word, normalizedWord, index, modifyState) {
         axios.post(apiAddress, { 
             word: normalizedWord || word, 
             language_id,
-            inflections: true 
+            inflections: true,
+            include_old
         }).then(resp => {
             dispatch(receiveNavigation(resp.data));
 

@@ -15,49 +15,64 @@ class TranslationRepository
         $this->_auditTrail = $auditTrail;
     }
 
-    public function getKeywordsForLanguage(string $word, $reversed = false, $languageId = 0) 
+    public function getKeywordsForLanguage(string $word, $reversed = false, $languageId = 0, $includeOld = true) 
     {
         $word = self::formatWord($word);
 
         if ($languageId > 0) {
+            $filter = [
+                [ 't.is_latest', ],
+                [ 't.is_deleted', ],
+                [ 't.language_id', $languageId ],
+                [ $reversed ? 'k.reversed_normalized_keyword_unaccented' : 'k.normalized_keyword_unaccented', 'like', $word ]
+            ];
+
+            if (! $includeOld) {
+                $filter[] = [ 'k.is_old', 0 ];
+            }
+
             $query = DB::table('keywords as k')
                 ->join('translations as t', 'k.sense_id', 't.sense_id')
-                ->where([
-                    [ 't.is_latest', '=', 1 ],
-                    [ 't.is_deleted', '=', 0 ],
-                    [ 't.language_id', '=', $languageId ],
-                    [ $reversed ? 'k.reversed_normalized_keyword_unaccented' : 'k.normalized_keyword_unaccented', 'like', $word ]
-                ])
-                ->select('k.keyword as k', 'k.normalized_keyword as nk')
-                ->distinct();
+                ->where($filter);
         } else {
-            $query = Keyword::findByWord($word, $reversed)
-                ->select('keyword as k', 'normalized_keyword as nk');
+            $query = Keyword::findByWord($word, $reversed, $includeOld);
         }
 
         $keywords = $query
-            ->orderBy(DB::raw('CHAR_LENGTH(k)'), 'asc')
+            ->select('keyword as k', 'normalized_keyword as nk', 'reversed_normalized_keyword_unaccented_length as nrkul',
+                'normalized_keyword_unaccented_length as nkul', 'reversed_normalized_keyword as rnk')
+            ->orderBy($reversed ? 'nrkul' : 'nkul', 'asc')
+            ->orderBy($reversed ? 'rnk' : 'nk', 'asc')
             ->limit(100)
+            ->distinct()
             ->get();
 
         return $keywords;
     }
 
-    public function getWordTranslations(string $word, int $languageId = 0) 
+    public function getWordTranslations(string $word, int $languageId = 0, bool $includeOld = true) 
     {
         $senses = self::getSensesForWord($word);
-        return self::createTranslationQuery($languageId)
+        return self::createTranslationQuery($languageId, true /* = latest */, $includeOld)
             ->whereIn('t.sense_id', $senses)
             ->orderBy('word')
             ->get()
             ->toArray();
     }
 
+    /**
+     * Gets the latest version of the translation specified by the ID.
+     *
+     * @param int $id
+     * @return void
+     */
     public function getTranslation(int $id) 
     {
-        return self::createTranslationQuery()
+        $translation = self::createTranslationQuery(0, false)
             ->where('t.id', $id)
             ->first();
+
+        return $translation;
     }
 
     public function getTranslationListForLanguage(int $languageId)
@@ -99,7 +114,7 @@ class TranslationRepository
                 }
                 
             })
-            ->orderBy('t.id', 'asc')
+            ->orderBy('t.id', 'desc')
             ->get()
             ->toArray();
     }
@@ -301,15 +316,18 @@ class TranslationRepository
         }
 
         // 12. Register an audit trail
-        $action = $changed && $originalTranslation !== null
-                ? AuditTrail::ACTION_TRANSLATION_EDIT 
-                : AuditTrail::ACTION_TRANSLATION_ADD;
-        $this->_auditTrail->store($action, $translation->account_id, $translation);
+        $action = ($originalTranslation === null)
+            ? AuditTrail::ACTION_TRANSLATION_ADD 
+            : AuditTrail::ACTION_TRANSLATION_EDIT;
+        $userId = ($action === AuditTrail::ACTION_TRANSLATION_ADD)
+            ?  $translation->account_id
+            : 0; // use the user currently logged in
+        $this->_auditTrail->store($action, $translation, $userId);
 
         return $translation;
     }
 
-    public function deleteTranslationWithId(int $id, int $replaceId)
+    public function deleteTranslationWithId(int $id, int $replaceId = null)
     {
         $translation = Translation::findOrFail($id);
 
@@ -326,7 +344,7 @@ class TranslationRepository
             $t = $translation->getOrigin();
             while ($t) {
                 $child = $t->getChild();
-                $this->deleteTranslation($t, 0);
+                $this->deleteTranslation($t);
                 $t = $child;
             }
         } else {
@@ -390,40 +408,51 @@ class TranslationRepository
     {
         $keyword = new Keyword;
 
-        $keyword->keyword                     = $word->word;
-        $keyword->word_id                     = $word->id;
-        $keyword->sense_id                    = $sense->id;
+        $keyword->keyword  = $word->word;
+        $keyword->word_id  = $word->id;
+        $keyword->sense_id = $sense->id;
 
         // Normalized keywords are primarily used for direct references, where accents do matter. A direct reference
         // can be _miiir_ which would match _mîr_ according to the default normalization scheme. See StringHelper for more
         // information.
-        $keyword->normalized_keyword          = $word->normalized_word;
-        $keyword->reversed_normalized_keyword = $word->reversed_normalized_word;
+        $keyword->normalized_keyword                            = $word->normalized_word;
+        $keyword->normalized_keyword_length                     = mb_strlen($word->normalized_word);
+        $keyword->reversed_normalized_keyword                   = $word->reversed_normalized_word;
+        $keyword->reversed_normalized_keyword_length            = mb_strlen($word->reversed_normalized_word);
 
         // Unaccented keywords' columns are used for searching, because _mir_ should find _mir_, _mír_, _mîr_ etc.
         $normalizedUnaccented = StringHelper::normalize($word->word, false);
-        $keyword->normalized_keyword_unaccented          = $normalizedUnaccented;
-        $keyword->reversed_normalized_keyword_unaccented = strrev($normalizedUnaccented);
+        $keyword->normalized_keyword_unaccented                 = $normalizedUnaccented;
+        $keyword->normalized_keyword_unaccented_length          = mb_strlen($keyword->normalized_keyword_unaccented);
+        $keyword->reversed_normalized_keyword_unaccented        = strrev($normalizedUnaccented);
+        $keyword->reversed_normalized_keyword_unaccented_length = mb_strlen($keyword->reversed_normalized_keyword_unaccented);
 
         if ($translation) {
             $keyword->translation_id = $translation->id;
-            $keyword->is_sense       = 0;
+            $keyword->is_sense = 0;
+            $keyword->is_old = $translation->translation_group_id 
+                ? $translation->translation_group->is_old
+                : false;
         } else {
-            $keyword->is_sense       = 1;
+            $keyword->is_sense = 1;
         }
 
         $keyword->save();
     }
 
-    protected static function createTranslationQuery($languageId = 0, $latest = true) 
+    protected static function createTranslationQuery($languageId = 0, $latest = true, $includeOld = true) 
     {
         $filters = [
-            ['t.is_deleted', '=', 0],
-            ['t.is_index', '=', 0]
+            ['t.is_deleted', 0],
+            ['t.is_index', 0]
         ];
 
         if ($latest) {
-            $filters[] = ['t.is_latest', '=', 1];
+            $filters[] = ['t.is_latest', 1];
+        }
+
+        if (! $includeOld) {
+            $filters[] = ['tg.is_old', 0];
         }
 
         $q = DB::table('translations as t')
@@ -445,9 +474,14 @@ class TranslationRepository
                 't.external_id', 't.is_latest', 't.is_rejected', 't.origin_translation_id');
     }
 
-    protected function deleteTranslation(Translation $t, int $replaceId) 
+    protected function deleteTranslation(Translation $t, int $replaceId = null) 
     {
         $t->keywords()->delete();
+        
+        // delete the sense if the specified translation is the only translation with that sense.
+        if ($t->sense->translations()->count() === 1 /* = $t */) {
+            $t->sense->keywords()->delete();
+        }
 
         if (! $t->is_index) {
             $t->sentence_fragments()->update([
@@ -456,6 +490,10 @@ class TranslationRepository
             
             $t->favourites()->update([
                 'translation_id' => $replaceId
+            ]);
+
+            $t->translation_reviews()->update([
+                'translation_id' => null
             ]);
         }
 

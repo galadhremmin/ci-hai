@@ -1,9 +1,16 @@
 @extends('_layouts.default')
 
-@section('title', ucfirst($word))
+@section('title', ucfirst($payload['word']))
 
 @section('body')
-<div class="ed-remove-when-navigating">
-  @include('book._page', $sections)
+<div id="ed-book-for-bots">
+@include('book._page', $payload)
 </div>
+<script type="application/json" id="ed-preloaded-book">
+{!! json_encode($payload) !!}
+</script>
+@endsection
+
+@section('scripts')
+  <script type="text/javascript" src="/js/comment.js" async></script>
 @endsection

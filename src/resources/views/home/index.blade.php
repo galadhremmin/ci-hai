@@ -33,10 +33,17 @@
   </div>
   <div class="col-xs-12 col-sm-6 col-md-4">
     <h4>Random phrase</h4>
-    @include('sentence.public._random', [ 'sentence' => $sentence ])
+    @include('sentence.public._random', [ 
+      'sentence'     => $sentence,
+      'sentenceData' => $sentenceData
+    ])
   </div>
+  <hr class="hidden-md hidden-lg clear-left">
   <div class="col-xs-12 col-sm-6 col-md-4">
     <h4>Community activity</h4>
+    <p>
+      The {{count($auditTrails)}} most recent activities.
+    </p>
     <ul class="list-group">
     @foreach($auditTrails as $a)
       <li class="list-group-item">

@@ -5,30 +5,50 @@ class EDFragment extends React.Component {
     onFragmentClick(ev) {
         ev.preventDefault();
 
-        if (this.props.onClick) {
-            this.props.onClick({
-                id: this.props.fragment.id,
-                url: ev.target.href,
-                translation_id: this.props.fragment.translation_id
-            });
+        if (! this.props.onClick) {
+            return;
         }
+
+        const f = this.props.fragment;
+        this.props.onClick({
+            id: f.id,
+            url: ev.target.href,
+            translation_id: f.translation_id
+        });
     }
 
     render() {
-        const f = this.props.fragment;
-        const previousF = this.props.previousFragment;
-
-        if (f.interpunctuation) {
-            return <span>{f.fragment}</span>;
+        // string fragments, like white space?
+        if (! this.props.fragment) {
+            return <span>{this.props.text || ''}</span>;
         }
 
-        return <span>
-            {previousF && previousF.is_dot ? '' : ' '}
-            <a className={classNames({'active': this.props.selected})}
-                     href={`/wt/${f.translation_id}`}
-                     onClick={this.onFragmentClick.bind(this)}>{f.fragment}</a>
-        </span>;
+        const text = this.props.text || this.props.fragment.fragment;
+
+        // interpunctuation, or other markers?
+        if (this.props.fragment.type) {
+            return <span>{text}</span>;
+        }
+
+        return <a className={classNames({'active': this.props.selected, 'text-danger': this.props.erroneous})}
+                  href={`/wt/${this.props.fragment.translation_id}`}
+                  onClick={this.onFragmentClick.bind(this)}>
+                  {text}
+               </a>;
+    }
+
+    getFragment() {
+        const fragments = this.props.fragments;
+        return fragments[this.props.mapping[0]];
     }
 }
+
+EDFragment.defaultProps = {
+    fragment: null,
+    text: undefined,
+    selected: false,
+    erroneous: false,
+    onClick: null
+};
 
 export default EDFragment;

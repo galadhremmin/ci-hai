@@ -4,6 +4,14 @@ namespace App\Models;
 
 class Translation extends ModelBase
 {
+    use Traits\HasAccountTrait;
+    
+    protected $fillable = [ 
+        'account_id', 'language_id', 'word_id', 'speech_id', 'translation_group_id', 'sense', 
+        'translation', 'source', 'comments', 'notes', 'is_uncertain', 'is_rejected', 'tengwar',
+        'word'
+    ];
+
     public function account() 
     {
         return $this->belongsTo(Account::class);
@@ -27,6 +35,11 @@ class Translation extends ModelBase
     public function word() 
     {
         return $this->belongsTo(Word::class);
+    }
+    
+    public function speech() 
+    {
+        return $this->belongsTo(Speech::class);
     }
 
     public function keywords() 

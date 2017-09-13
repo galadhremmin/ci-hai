@@ -33,6 +33,8 @@ class StringHelper
         'â' => 'aaa',
     ];
 
+    private static $_reversedAccentsNormalizationTable = null;
+
     private function __construct() 
     {
         // Disable construction
@@ -48,6 +50,14 @@ class StringHelper
         return trim(mb_strtolower($str, 'utf-8'));
     }
 
+    /**
+     * Normalizes the specified string.
+     *
+     * @param string $str
+     * @param boolean $accentsMatter - whether accents should be normalized according to a phonetic approximation
+     * @param boolean $retainWildcard - retains wildcard character (*) 
+     * @return void
+     */
     public static function normalize(string $str, $accentsMatter = true, $retainWildcard = false) 
     {          
         $str = self::toLower($str);
@@ -74,8 +84,12 @@ class StringHelper
         // specified as application default.
         // setlocale(LC_ALL, 'en_UK.UTF-8');
 
-        // Transcribe á > ´a, ê > ^e etc.
+        // Transcribe á, ê, é etc.
         $str = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $str);
+
+        // Mac OS X Server requires some extra 'love' because it uses a different version of iconv
+        // than the rest. It transcribes é -> 'e, ê -> ^e, ë -> "e etc.
+        $str = preg_replace('/[\'^"]/', '', $str);
 
         // restore the locale
         // setlocale(LC_ALL, $currentLocale);
@@ -94,6 +108,27 @@ class StringHelper
         $str = preg_replace('/[^0-9a-z_]/', '', $str);
 
         return $str;
+    }
+
+    /**
+     * Reversed normalization, attempting to convert a normalized string into its accented version.
+     *
+     * @param string $str
+     * @return void
+     */
+    public static function reverseNormalization(string $str)
+    {
+        $reversed =& self::$_reversedAccentsNormalizationTable;
+
+        if ($reversed === null) {
+            self::$_reversedAccentsNormalizationTable = [];
+
+            foreach (self::$_accentsNormalizationTable as $key => $value) {
+                $reversed[$value] = $key;
+            }
+        }
+
+        return strtr($str, $reversed);
     }
 
     public static function createLink($s) 

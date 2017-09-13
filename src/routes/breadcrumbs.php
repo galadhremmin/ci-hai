@@ -114,25 +114,33 @@ Breadcrumbs::register('sentence.edit', function ($breadcrumbs, App\Models\Senten
     ]));
 });
 
+Breadcrumbs::register('sentence.confirm-destroy', function ($breadcrumbs, App\Models\Sentence $sentence)
+{
+    $breadcrumbs->parent('sentence.index');
+    $breadcrumbs->push('Delete phrase (' . $sentence->name . ')', route('sentence.confirm-destroy', [
+        'id' => $sentence->id
+    ]));
+});
+
 // //////////////////////////////////////////////////////////////////////////////////////////////
-// Dashboard > Glosses
+// Dashboard > Glossary
 
 Breadcrumbs::register('translation.index', function ($breadcrumbs)
 {
     $breadcrumbs->parent('dashboard');
-    $breadcrumbs->push('Words', route('translation.index'));
+    $breadcrumbs->push('Glossary', route('translation.index'));
 });
 
 Breadcrumbs::register('translation.create', function ($breadcrumbs)
 {
     $breadcrumbs->parent('translation.index');
-    $breadcrumbs->push('Add word', route('translation.create'));
+    $breadcrumbs->push('Add gloss', route('translation.create'));
 });
 
 Breadcrumbs::register('translation.edit', function ($breadcrumbs, App\Models\Translation $translation)
 {
     $breadcrumbs->parent('translation.index');
-    $breadcrumbs->push('Edit word (' . $translation->word->word . ')', route('translation.edit', [
+    $breadcrumbs->push('Edit gloss (' . $translation->word->word . ')', route('translation.edit', [
         'id' => $translation->id
     ]));
 });
@@ -140,9 +148,65 @@ Breadcrumbs::register('translation.edit', function ($breadcrumbs, App\Models\Tra
 Breadcrumbs::register('translation.list', function ($breadcrumbs, App\Models\Language $language)
 {
     $breadcrumbs->parent('translation.index');
-    $breadcrumbs->push('List words in ' . $language->name, route('translation.list', [
+    $breadcrumbs->push('Glossary for ' . $language->name, route('translation.list', [
         'id' => $language->id
     ]));
+});
+
+Breadcrumbs::register('translation.confirm-delete', function ($breadcrumbs, App\Models\Translation $translation)
+{
+    $breadcrumbs->parent('translation.index');
+    $breadcrumbs->push('Delete gloss ' . $translation->word->word);
+});
+
+// //////////////////////////////////////////////////////////////////////////////////////////////
+// Dashboard > Contributions
+Breadcrumbs::register('translation-review.index', function ($breadcrumbs)
+{
+    $breadcrumbs->parent('dashboard');
+    $breadcrumbs->push('Contributions', route('translation-review.index'));
+});
+
+Breadcrumbs::register('translation-review.create', function ($breadcrumbs)
+{
+    $breadcrumbs->parent('translation-review.index');
+    $breadcrumbs->push('Contribute', route('translation-review.create'));
+});
+
+Breadcrumbs::register('translation-review.edit', function ($breadcrumbs, int $id)
+{
+    $breadcrumbs->parent('translation-review.index');
+    $breadcrumbs->push('Change contribution', route('translation-review.edit', ['id' => $id]));
+});
+
+Breadcrumbs::register('translation-review.show', function ($breadcrumbs, int $id)
+{
+    $breadcrumbs->parent('translation-review.index');
+    $breadcrumbs->push('Contribution #'.$id, route('translation-review.show', ['id' => $id]));
+});
+
+Breadcrumbs::register('translation-review.list', function ($breadcrumbs)
+{
+    $breadcrumbs->parent('dashboard');
+    $breadcrumbs->push('Administration of contributions', route('translation-review.list'));
+});
+
+Breadcrumbs::register('translation-review.confirm-destroy', function ($breadcrumbs, int $id)
+{
+    $breadcrumbs->parent('translation-review.show', $id);
+    $breadcrumbs->push('Confirm deletion', route('translation-review.confirm-destroy', ['id' => $id]));
+});
+
+Breadcrumbs::register('translation-review.confirm-reject', function ($breadcrumbs, int $id)
+{
+    $breadcrumbs->parent('translation-review.show', $id);
+    $breadcrumbs->push('Confirm rejection', route('translation-review.confirm-reject', ['id' => $id]));
+});
+
+Breadcrumbs::register('translation-review.confirm-approve', function ($breadcrumbs, int $id)
+{
+    $breadcrumbs->parent('translation-review.show', $id);
+    $breadcrumbs->push('Approved!', route('translation-review.confirm-approve', ['id' => $id]));
 });
 
 // //////////////////////////////////////////////////////////////////////////////////////////////
