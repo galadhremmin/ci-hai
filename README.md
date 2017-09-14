@@ -1,4 +1,4 @@
-# 辞海
+# 辞书
 A fork of [Parf Edhellen](https://github.com/galadhremmin/Parf-Edhellen) for mandarin.
 
 # License
