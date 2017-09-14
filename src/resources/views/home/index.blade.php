@@ -5,9 +5,9 @@
 @section('body')
 
 <div class="jumbotron">
-  <h1 title="Well met!">Mae govannen!</h1>
+  <h1 title="Welcome!">欢迎</h1>
   <p>
-    This is an Elvish Book, <em>Parf Edhellen</em>, dedicated to Tolkien's languages.
+    This is a dictionary for mandarin based on CC-CEDICT.
 </div>
 
 <hr>
