@@ -20,7 +20,7 @@ class CCCEDICTImportCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'cc-cedict-import {dataSource}';
+    protected $signature = 'cc-cedict-import {dataSource} {--skip=0}';
 
     /**
      * The console command description.
@@ -111,8 +111,13 @@ class CCCEDICTImportCommand extends Command
             'is_old' => 0
         ]);
 
+        $n = 0;
+        $skipN = intval($this->option('skip'));
         foreach ($glosses as $gloss) {
-            
+            if ($n++ < $skipN) {
+                continue;
+            }
+
             // Create a translation word from the list of translations. 
             $translation = $gloss['translations'][0];
             $comments = '';
@@ -196,19 +201,31 @@ class CCCEDICTImportCommand extends Command
             $ts->translation_group_id = $tt->translation_group_id = $group->id;
             $ts->comments = $tt->comments = $comments;
 
+            $changedT = false;
             $this->_translationRepository->saveTranslation(
                 $gloss['traditional'],
                 $translation,
                 $tt,
-                $keywords
+                $keywords,
+                true,
+                $changedT
             );
 
-            $this->_translationRepository->saveTranslation(
+            $changedS = false;
+            $tss = $this->_translationRepository->saveTranslation(
                 $gloss['simplified'],
                 $translation,
                 $ts,
-                $keywords
+                $keywords,
+                true,
+                $changedS
             );
+            
+            if ($changedT || $changedT) {
+                $this->info(($n - 1).' saved '.$translation);
+            } else {
+                $this->info(($n - 1).' skipped '.$translation);
+            }
         }
     }
 
