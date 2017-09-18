@@ -8,9 +8,8 @@
 
   @include('sentence.public._header')
   <p>
-    Studying attested phrases is a great way of learn Tolkien's languages.
-    We currently have {{ $numberOfSentences }} phrases in our database, and
-    {{ $numberOfNeologisms }} of them are neologisms.
+    Studying phrases is a great way of learn a language.
+    We currently have {{ $numberOfSentences }} phrases in our database.
   </p>
   <div class="row">
     <div class="col-sm-6">
@@ -33,10 +32,14 @@
           <h2 class="panel-title">Random phrase</h2>
         </div>
         <div class="panel-body">
+          @if ($randomSentence && $randomSentenceData)
           @include('sentence.public._random', [ 
             'sentence'     => $randomSentence,
             'sentenceData' => $randomSentenceData
           ])
+          @else
+          <em>None to show.</em>
+          @endif
         </div>
       </div>
     </div>

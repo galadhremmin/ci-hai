@@ -16,18 +16,7 @@
   <div class="col-xs-12 col-sm-6 col-md-4">
     <h4>About</h4>
     <p>
-      This website is dedicated to Tolkien's languages, with an emphasis on 
-      the elvish languages of his legendarium. Our dictionary consists of
-      imported glosses from a variety of quality dictionaries. You can read 
-      more <a href="{{ route('about') }}">on our about page</a>.
-    </p>
-    <p>
-      <em>Parf Edhellen</em> is a non-profit, non-commercial endeavor. It is 
-      developed and maintained by Leonard. Please contact us on Twitter if you 
-      would like to get in touch,
-      <a href="https://twitter.com/parmaeldo" target="_blank">@parmaeldo</a>.
-      If you are a developer, you can also follow the project on 
-      <a href="https://github.com/galadhremmin/Parf-Edhellen" target="_blank">Github</a>.
+      
     </p>
     <hr class="visible-xs">
   </div>

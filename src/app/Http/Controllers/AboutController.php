@@ -9,9 +9,4 @@ class AboutController extends Controller
     {
         return view('about.index');
     }
-
-    public function donations() 
-    {
-        return view('about.donations');
-    }
 }

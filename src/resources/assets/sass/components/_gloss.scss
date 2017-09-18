@@ -4,10 +4,18 @@ blockquote.gloss {
 
   h3.trans-word { 
     margin-top: 0;
+    font-size: $font-size-h3*1.5;
+    color: #bb3939;
     
     a {
       float: right;
       margin-left: 5px;
+      font-size: $font-size-h3;
+      color: $gray-base;
+
+      &:hover {
+        color: $link-hover-color;
+      }
 
       &.neologism {
         float: none;

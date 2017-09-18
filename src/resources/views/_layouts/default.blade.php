@@ -37,7 +37,6 @@
           <li class="{{ active('') }}"><a href="/">Home</a></li>
           <li class="{{ active(['sentence.public', 'sentence.public.language', 'sentence.public.sentence']) }}"><a href="{{ route('sentence.public') }}">Phrases</a></li>
           <li class="{{ active('about') }}"><a href="{{ route('about') }}">About</a></li>
-          <li class="{{ active('about.donations') }}"><a href="{{ route('about.donations') }}">Donations</a></li>
         </ul>
         <ul class="nav navbar-nav navbar-right">
           @if (Auth::check())
@@ -67,8 +66,7 @@
     <!-- begin content -->
     @yield('body')
     <div class="row">
-      <p class="disclaimer">Black Speech, Nandorin, Noldorin, Quendya, Quenya, Sindarin, Telerin are languages conceived by Tolkien and they do not belong to us; we neither can nor do claim affiliation 
-    with <a href="http://www.middleearth.com/" target="_blank">Middle-earth Enterprises</a> nor <a href="http://www.tolkienestate.com/" target="_blank">Tolkien Estate</a>.</p>
+      <p class="disclaimer">Disclaimer</p>
     </div>
   </div>
 
