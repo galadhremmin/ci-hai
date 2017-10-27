@@ -3,29 +3,38 @@
 namespace App\Repositories;
 
 use Illuminate\Support\Facades\DB;
-use App\Models\{ AuditTrail, Keyword, Translation, Sense, Word };
+use Auth;
+
 use App\Helpers\StringHelper;
+use App\Events\{
+    TranslationCreated,
+    TranslationEdited
+};
+use App\Models\{ 
+    Keyword, 
+    Translation,
+    Sense, 
+    Word 
+};
 
 class TranslationRepository
 {
-    protected $_auditTrail;
-
-    public function __construct(AuditTrailRepository $auditTrail)
-    {
-        $this->_auditTrail = $auditTrail;
-    }
-
     public function getKeywordsForLanguage(string $word, $reversed = false, $languageId = 0, $includeOld = true) 
     {
-        $word = self::formatWord($word);
+        $hasWildcard = null;
+        $word = self::formatWord($word, $hasWildcard);
 
         if ($languageId > 0) {
             $filter = [
-                [ 't.is_latest', ],
-                [ 't.is_deleted', ],
+                [ 't.is_latest', 1 ],
+                [ 't.is_deleted', 0 ],
                 [ 't.language_id', $languageId ],
                 [ $reversed ? 'k.reversed_normalized_keyword_unaccented' : 'k.normalized_keyword_unaccented', 'like', $word ]
             ];
+
+            if ($hasWildcard) {
+                $filter[] = [ 'k.word_id', '=', DB::raw('t.word_id') ];
+            }
 
             if (! $includeOld) {
                 $filter[] = [ 'k.is_old', 0 ];
@@ -33,6 +42,7 @@ class TranslationRepository
 
             $query = DB::table('keywords as k')
                 ->join('translations as t', 'k.sense_id', 't.sense_id')
+                ->whereNotNull('k.translation_id')
                 ->where($filter);
         } else {
             $query = Keyword::findByWord($word, $reversed, $includeOld);
@@ -61,7 +71,7 @@ class TranslationRepository
     }
 
     /**
-     * Gets the latest version of the translation specified by the ID.
+     * Gets the version of the translation specified by the ID.
      *
      * @param int $id
      * @return void
@@ -73,6 +83,25 @@ class TranslationRepository
             ->first();
 
         return $translation;
+    }
+
+    /**
+     * Gets the ID for the latest entity associated with the specified origin.
+     *
+     * @param int $originTranslationId
+     * @return void
+     */
+    public function getLatestTranslation(int $originTranslationId)
+    {
+        $data = DB::table('translations')
+            ->where([
+                ['translations.origin_translation_id', $originTranslationId],
+                ['is_latest', 1]
+            ])
+            ->select('id')
+            ->first();
+
+        return $data->id;
     }
 
     public function getTranslationListForLanguage(int $languageId)
@@ -217,8 +246,8 @@ class TranslationRepository
         $changed = true;
         $originalTranslation = null;
         if ($translation->id) {
-            $originalTranslation = Translation::findOrFail($translation->id)
-                ->getLatestVersion();
+            $originalTranslation = Translation::with('sense', 'word', 'keywords')
+                ->findOrFail($translation->id)->getLatestVersion();
 
             // 5. were there changes made?
             $newAttributes = $translation->attributesToArray();
@@ -273,7 +302,7 @@ class TranslationRepository
                 $originalTranslation->sentence_fragments()->update([
                     'translation_id' => $translation->id
                 ]);
-                $originalTranslation->translation_reviews()->update([
+                $originalTranslation->contributions()->update([
                     'translation_id' => $translation->id
                 ]);
                 $originalTranslation->favourites()->update([
@@ -281,48 +310,81 @@ class TranslationRepository
                 ]);
             }
         }
-
-        // 9. Remove existing keywords
-        if ($originalTranslation !== null) {
-            $originalTranslation->keywords()->delete();
-        }
-
-        // 10. save gloss and word as keywords on the translation
-        $this->createKeyword($word, $sense, $translation);
-        if ($word->id !== $glossWord->id) { // this is sometimes possible (most often with names)
-            $this->createKeyword($glossWord, $sense, $translation);
-        }
-
-        // 11. Register keywords on the sense
         
-        // 11a. Process keywords -- filter through the keywords and remove keywords that
+        // 9. Process keywords -- filter through the keywords and remove keywords that
         // match the gloss and the translation's word, as these are managed separately.
         $keywords = array_filter($keywords, function ($w) use($wordString, $glossString) {
             return $w !== $wordString && $w !== $glossString;
         });
 
-        // 11b. Delete existing keywords associated with the sense.
-        if ($resetKeywords) {
-            $sense->keywords()->whereNull('translation_id')->delete();
-        }
+        // 10. Remove existing keywords, if they have changed
+        $keywordsChanged = true;
+        if ($originalTranslation !== null) {
+            
+            // transform original keyword entities to an array of strings.
+            $originalKeywords = array_merge(
+                
+                $originalTranslation->keywords->map(function ($k) {
+                        return $k->keyword;
+                    })->toArray(),
 
-        // 11c. Recreate the keywords for the sense.
-        foreach ($keywords as $keyword) {
-            $keywordWord = $this->createWord($keyword, $translation->account_id);
+                $originalTranslation->sense->keywords()
+                    ->whereNull('translation_id')
+                    ->get()
+                    ->map(function ($k) {
+                        return $k->keyword;
+                    })->toArray()
+            );
 
-            if ($sense->keywords()->where('word_id', $keywordWord->id)->count() < 1) {
-                $this->createKeyword($keywordWord, $sense, null);
+            // Create an array of keywords for the original entity as well as the new entity, and sort them. 
+            // Once sorted, simple equality check can be carried out to determine whether the arrays are identical.
+            $originalKeywords = array_unique($originalKeywords);
+            $newKeywords = array_merge($keywords, [ $wordString, $glossString ]);
+
+            sort($originalKeywords);
+            sort($newKeywords);
+            
+            $keywordsChanged = $originalKeywords !== $newKeywords;
+
+            if ($keywordsChanged) {
+                $originalTranslation->keywords()->delete();
             }
         }
 
-        // 12. Register an audit trail
-        $action = ($originalTranslation === null)
-            ? AuditTrail::ACTION_TRANSLATION_ADD 
-            : AuditTrail::ACTION_TRANSLATION_EDIT;
-        $userId = ($action === AuditTrail::ACTION_TRANSLATION_ADD)
-            ?  $translation->account_id
-            : 0; // use the user currently logged in
-        $this->_auditTrail->store($action, $translation, $userId);
+        // 11. save gloss and word as keywords on the translation, if changed.
+        if ($keywordsChanged) {
+            $this->createKeyword($word, $sense, $translation);
+            if ($word->id !== $glossWord->id) { // this is sometimes possible (most often with names)
+                $this->createKeyword($glossWord, $sense, $translation);
+            }
+        }
+
+        // 12. Register keywords on the sense, if changed.
+        if ($keywordsChanged) {
+            // 12a. Delete existing keywords associated with the sense.
+            if ($resetKeywords) {
+                $sense->keywords()->whereNull('translation_id')->delete();
+            }
+
+            // 12b. Recreate the keywords for the sense.
+            foreach ($keywords as $keyword) {
+                $keywordWord = $this->createWord($keyword, $translation->account_id);
+
+                if ($sense->keywords()->where('word_id', $keywordWord->id)->count() < 1) {
+                    $this->createKeyword($keywordWord, $sense, null);
+                }
+            }
+        }
+
+        // 13. Register an audit trail
+        if ($changed || $keywordsChanged || $originalTranslation === null) {
+
+            $event = ($originalTranslation === null)
+                ? new TranslationCreated($translation, $translation->account_id) 
+                : new TranslationEdited($translation, Auth::user()->id);
+            
+            event($event);
+        }
 
         return $translation;
     }
@@ -352,6 +414,27 @@ class TranslationRepository
         }
 
         return true;
+    }
+
+    /**
+     * Gets keywords for the specified translation.
+     *
+     * @param int $senseId
+     * @param int $id
+     * @return \stdClass
+     */
+    public function getKeywords(int $senseId, int $id)
+    {
+        $keywords = Keyword::join('words', 'words.id', 'keywords.word_id')
+                ->where('keywords.sense_id', $senseId)
+                ->where(function ($query) use($id) {
+                    $query->whereNull('keywords.translation_id')
+                        ->orWhere('keywords.translation_id', $id);
+                })
+                ->select('words.id', 'words.word')
+                ->get();
+
+        return $keywords;
     }
 
     protected static function getSensesForWord(string $word) 
@@ -471,7 +554,7 @@ class TranslationRepository
                 't.comments', 't.tengwar', 't.phonetic', 't.language_id', 't.account_id',
                 'a.nickname as account_name', 'w.normalized_word', 't.is_index', 't.created_at', 't.translation_group_id',
                 'tg.name as translation_group_name', 'tg.is_canon', 'tg.external_link_format', 't.is_uncertain', 
-                't.external_id', 't.is_latest', 't.is_rejected', 't.origin_translation_id');
+                't.external_id', 't.is_latest', 't.is_rejected', 't.origin_translation_id', 't.sense_id');
     }
 
     protected function deleteTranslation(Translation $t, int $replaceId = null) 
@@ -492,7 +575,7 @@ class TranslationRepository
                 'translation_id' => $replaceId
             ]);
 
-            $t->translation_reviews()->update([
+            $t->contributions()->update([
                 'translation_id' => null
             ]);
         }
@@ -501,12 +584,14 @@ class TranslationRepository
         $t->save();
     }
 
-    protected static function formatWord(string $word) 
+    protected static function formatWord(string $word, bool& $hasWildcard = null) 
     {
         if (strpos($word, '*') !== false) {
+            $hasWildcard = true;
             return str_replace('*', '%', $word);
         } 
         
+        $hasWildcard = false;
         return $word.'%';
     }
 }

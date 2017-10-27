@@ -2,15 +2,44 @@
 
 namespace App\Http\Controllers\Resources;
 
-use App\Models\{ Translation, Keyword, Word, Language };
-use App\Helpers\{ LinkHelper, StringHelper };
-
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
-class TranslationController extends TranslationControllerBase
+use App\Adapters\BookAdapter;
+use App\Repositories\TranslationRepository;
+use App\Models\{ 
+    Translation, 
+    Keyword, 
+    Word, 
+    Language 
+};
+use App\Helpers\{ 
+    LinkHelper, 
+    StringHelper 
+};
+use App\Http\Controllers\Traits\{
+    CanValidateTranslation, 
+    CanMapTranslation 
+};
+use App\Events\{
+    TranslationDestroyed
+};
+
+class TranslationController extends Controller
 {
+    use CanMapTranslation,
+        CanValidateTranslation;
+
+    protected $_bookAdapter;
+    protected $_translationRepository;
+
+    public function __construct(BookAdapter $adapter, TranslationRepository $translationRepository) 
+    {
+        $this->_bookAdapter = $adapter;
+        $this->_translationRepository = $translationRepository;
+    }
+
     public function index(Request $request)
     {
         $latestTranslations = Translation::latest()
@@ -68,17 +97,8 @@ class TranslationController extends TranslationControllerBase
         // Retrieve the words associated with the gloss' set of keywords. This is achieved by
         // joining with the _words_ table. The result is assigned to _keywords, which starts with
         // an underscore.
-        $translation->_keywords = $translation->sense 
-            ? $translation->sense
-                ->keywords()
-                ->join('words', 'words.id', 'keywords.word_id')
-                ->where(function ($query) use($id) {
-                    $query->whereNull('translation_id')
-                        ->orWhere('translation_id', $id);
-                })
-                ->select('words.id', 'words.word')
-                ->get()
-            : [];
+        $translation->_keywords = $this->_translationRepository->getKeywords($translation->sense_id, 
+            $translation->id);
 
         return $request->ajax() 
             ? $translation
@@ -89,7 +109,7 @@ class TranslationController extends TranslationControllerBase
 
     public function store(Request $request)
     {
-        $this->validateRequest($request);
+        $this->validateTranslationInRequest($request);
 
         $translation = new Translation;
         $translation = $this->saveTranslation($translation, $request);
@@ -103,7 +123,7 @@ class TranslationController extends TranslationControllerBase
 
     public function update(Request $request, int $id)
     {
-        $this->validateRequest($request, $id);
+        $this->validateTranslationInRequest($request, $id);
 
         $translation = Translation::findOrFail($id);
         $translation = $this->saveTranslation($translation, $request);
@@ -130,11 +150,19 @@ class TranslationController extends TranslationControllerBase
             'replacement_id' => 'sometimes|numeric|exists:translations,id'
         ]);
 
+        $translation = Translation::findOrFail($id);
         $replacementId = $request->has('replacement_id') 
             ? intval($request->input('replacement_id'))
             : null;
+        $replacement = $replacementId !== null 
+            ? Translation::findOrFail($replacementId)
+            : null;
 
         $ok = $this->_translationRepository->deleteTranslationWithId($id, $replacementId);
+        if ($ok) {
+            event(new TranslationDestroyed($translation, $replacement));
+        }
+
         return $ok
             ? response(null, 204)
             : response(null, 400);

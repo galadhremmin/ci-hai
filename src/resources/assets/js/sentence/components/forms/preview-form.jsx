@@ -101,21 +101,27 @@ class EDPreviewForm extends React.Component {
         const props = this.props;
         const payload = {
             id:               props.sentenceId || undefined,
-            account_id:       props.sentenceAccountId,
+            account_id:       props.sentenceAccountId || undefined,
             name:             props.sentenceName,
             source:           props.sentenceSource,
             language_id:      props.sentenceLanguageId,
             description:      props.sentenceDescription,
             long_description: props.sentenceLongDescription,
             is_neologism:     props.sentenceIsNeologism,
-            fragments:        props.fragments
+            fragments:        props.fragments,
+            morph:            'sentence',
+            notes:            props.notes
         };
 
-        if (payload.id) {
-            axios.put(`/admin/sentence/${payload.id}`, payload)
+        if ((props.admin && payload.id) || (! props.admin && props.contributionId)) {
+            const url = props.admin 
+                ? `/admin/sentence/${payload.id}` 
+                : `/dashboard/contribution/${props.contributionId}`;
+
+            axios.put(url, payload)
                 .then(this.onSavedResponse.bind(this), this.onFailedResponse.bind(this));
         } else {
-            axios.post('/admin/sentence', payload)
+            axios.post(props.admin ? '/admin/sentence' : '/dashboard/contribution', payload)
                 .then(this.onSavedResponse.bind(this), this.onFailedResponse.bind(this));
         }
     }
@@ -184,7 +190,10 @@ const mapStateToProps = state => {
         sentenceLongDescription: state.long_description,
         sentenceIsNeologism: state.is_neologism,
         sentenceAccountId: state.account_id,
-        sentenceId: state.id
+        sentenceId: state.id,
+        notes: state.notes,
+        admin: state.is_admin,
+        contributionId: state.contribution_id
     };
 };
 

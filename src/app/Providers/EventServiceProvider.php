@@ -13,9 +13,20 @@ class EventServiceProvider extends ServiceProvider
      * @var array
      */
     protected $listen = [
-        'App\Events\SomeEvent' => [
-            'App\Listeners\EventListener',
-        ],
+        \SocialiteProviders\Manager\SocialiteWasCalled::class => [
+            // add your listeners (aka providers) here
+            'SocialiteProviders\Live\LiveExtendSocialite@handle',
+        ]
+    ];
+
+    /**
+     * The subscriber classes to register.
+     *
+     * @var array
+     */
+    protected $subscribe = [
+        \App\Subscribers\AuditTrailSubscriber::class,
+        \App\Subscribers\DiscussEventSubscriber::class,
     ];
 
     /**

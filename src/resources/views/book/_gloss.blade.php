@@ -7,7 +7,7 @@
     class="gloss"
   @endif>
   <h3 rel="trans-word" class="trans-word">
-    @if (!$gloss->is_canon || $gloss->is_uncertain || !$gloss->is_latest)
+    @if (!$gloss->is_canon || $gloss->is_uncertain)
     <a href="/about" title="Unattested, unverified or debatable content." class="neologism">
       <span class="glyphicon glyphicon-asterisk"></span>
     </a>
@@ -39,7 +39,7 @@
       Group: <span itemprop="sourceOrganization">{{ $gloss->translation_group_name }}</span>.
     @endif
   
-    Published <span itemprop="datePublished">{{ $gloss->created_at }}</span> by 
+    Published <span itemprop="datePublished" class="date">{{ $gloss->created_at }}</span> by 
     <a href="{{ $link->author($gloss->account_id, $gloss->account_name) }}" itemprop="author" rel="author" title="View profile for {{ $gloss->account_name }}.">
       <span itemprop="name">{{ $gloss->account_name }}</span>
     </a>

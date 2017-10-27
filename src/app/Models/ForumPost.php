@@ -4,13 +4,13 @@ namespace App\Models;
 
 class ForumPost extends ModelBase
 {
-    use Traits\HasAccountTrait;
+    use Traits\HasAccount;
 
-    protected $fillable = [ 'forum_context_id', 'entity_id', 'parent_forum_post_id', 'number_of_likes', 'account_id', 'content' ];
+    protected $fillable = [ 'forum_thread_id', 'parent_forum_post_id', 'number_of_likes', 'account_id', 'content' ];
 
-    public function account() 
+    public function forum_thread() 
     {
-        return $this->belongsTo(Account::class);
+        return $this->belongsTo(ForumThread::class);
     }
 
     public function likes() 

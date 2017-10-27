@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Traits\{ CanTranslateTrait, CanGetTranslationTrait };
+use App\Http\Controllers\Traits\{
+    CanTranslate, 
+    CanGetTranslation
+};
 
 class BookController extends Controller
 {
-    use CanTranslateTrait, CanGetTranslationTrait {
-        CanTranslateTrait::__construct insteadof CanGetTranslationTrait;
+    use CanTranslate, CanGetTranslation {
+        CanTranslate::__construct insteadof CanGetTranslation;
     }
 
     public function pageForWord(Request $request, string $word)
@@ -30,6 +33,16 @@ class BookController extends Controller
         return view('book.page', [
             'payload' => $model
         ]);
+    }
+
+    public function redirectToLatest(Request $request, int $id)
+    {
+        $translation = $this->getTranslationUnadapted($id, true);
+        if (! $translation) {
+            abort(404);
+        }
+
+        return redirect()->route('translation.ref', ['id' => $translation->id]);
     }
 
     public function versions(Request $request, int $id)

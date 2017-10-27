@@ -60,13 +60,19 @@
               </a>
             </li>
             <li>
-              <a href="{{ route('translation-review.index') }}">
-              <span class="glyphicon glyphicon-globe"></span>
-
+              <a href="{{ route('contribution.index') }}">
+              <span class="glyphicon glyphicon-book"></span>
                 Contributions
+
                 @if ($noOfContributions)
                 <span class="label label-info">{{ $noOfContributions }}</span>
                 @endif
+              </a>
+            </li>
+            <li>
+              <a href="{{ route('author.posts', ['id' => $user->id]) }}">
+              <span class="glyphicon glyphicon-comment"></span>
+                Comments
               </a>
             </li>
           </ul>
@@ -83,7 +89,7 @@
         <div class="panel-body">
           <ul>
             <li>
-              <a href="{{ route('translation-review.list') }}">Contributions</a>
+              <a href="{{ route('contribution.list') }}">Contributions</a>
               @if ($noOfPendingContributions > 0)
               <span class="label label-info">{{ $noOfPendingContributions }}</span>
               @endif

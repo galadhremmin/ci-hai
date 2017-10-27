@@ -161,17 +161,29 @@ class EDFragmentForm extends EDStatefulFormComponent {
     scrollToForm() {
         // add a little delay because it's actually useful in this situation
         window.setTimeout(() => {
-            document.querySelector('.fragment-admin-form').scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
+            const adminForm = document.querySelector('.fragment-admin-form');
+            if (adminForm) {
+                adminForm.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
         }, 250);
     }
 
     submit() {
         // validate all fragments
         const fragments = this.props.fragments;
-        axios.post('/admin/sentence/validate-fragment', { fragments })
+        const payload = this.props.admin ? { fragments }
+            : { 
+                fragments, 
+                substep_id: 1, 
+                morph: 'sentence',
+                contribution_id: this.props.contributionId || undefined
+            };
+
+        axios.post(this.props.admin ? '/admin/sentence/validate-fragment' 
+            : '/dashboard/contribution/substep-validate', payload)
             .then(this.onFragmentsValid.bind(this), this.onFragmentsInvalid.bind(this));
     }
 
@@ -395,7 +407,9 @@ class EDFragmentForm extends EDStatefulFormComponent {
             erroneousIndexes: []
         });
 
-        axios.post('/admin/sentence/parse-fragment/tengwar', { fragments: this.props.fragments }).then(response => {
+        axios.post(this.props.admin ? '/admin/sentence/parse-fragment/tengwar'
+            : '/dashboard/contribution/sentence/parse-fragment/tengwar', 
+            { fragments: this.props.fragments }).then(response => {
             this.props.dispatch(setTengwar(response.data));
             this.props.history.goForward();
         });
@@ -675,7 +689,9 @@ const mapStateToProps = state => {
         language_id: state.language_id,
         fragments: state.fragments,
         latin: state.latin,
-        loading: state.loading
+        loading: state.loading,
+        admin: state.is_admin,
+        contributionId: state.contribution_id
     };
 };
 

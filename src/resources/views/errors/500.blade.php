@@ -16,10 +16,6 @@
     Sorry for the inconvenience!
 </p>
 
-@if (Auth::check() && Auth::user()->isAdministrator())
-<hr>
-<p>{{ $exception->getMessage() }}</p>
-<pre>{{ $exception->getStack() }}</pre>
-@endif
+@include('errors._stack')
 
 @endsection

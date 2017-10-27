@@ -2,18 +2,20 @@
 
 namespace App\Repositories;
 
-use App\Models\{ AuditTrail, Sentence, SentenceFragment };
+use Auth;
 use Illuminate\Support\Facades\DB;
+
+use App\Events\{
+    SentenceCreated,
+    SentenceEdited
+};
+use App\Models\{ 
+    Sentence, 
+    SentenceFragment 
+};
 
 class SentenceRepository
 {
-    protected $_auditTrail;
-
-    public function __construct(AuditTrailRepository $auditTrail)
-    {
-        $this->_auditTrail = $auditTrail;
-    }
-
     /**
      * Gets the languages for all available sentences.
      * @return mixed
@@ -87,7 +89,7 @@ class SentenceRepository
         if ($numberOfFragments !== count($inflections)) {
             throw new Exception('The number of fragments must match the number of inflections.');
         }
-
+        
         $sentence->save();
         $this->destroyFragments($sentence);
         
@@ -103,11 +105,11 @@ class SentenceRepository
             }
         }
 
-        // Register an audit trail
-        $action = $changed 
-                ? AuditTrail::ACTION_SENTENCE_EDIT 
-                : AuditTrail::ACTION_SENTENCE_ADD;
-        $this->_auditTrail->store($action, $sentence);
+        // Inform listeners of this change.
+        $event = ! $changed 
+                ? new SentenceCreated($sentence, $sentence->account_id)
+                : new SentenceEdited($sentence, Auth::user()->id);
+        event($event);
     }
 
     public function destroyFragments(Sentence $sentence) 

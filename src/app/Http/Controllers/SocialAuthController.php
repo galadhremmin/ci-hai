@@ -8,18 +8,14 @@ use Illuminate\Support\Facades\Auth;
 use Socialite;
 use Carbon\Carbon;
 
-use App\Models\{ Account, AuthorizationProvider, AuditTrail };
-use App\Repositories\AuditTrailRepository;
+use App\Events\AccountAuthenticated;
+use App\Models\{ 
+    Account, 
+    AuthorizationProvider 
+};
 
 class SocialAuthController extends Controller
 {
-    protected $_auditTrail;
-
-    public function __construct(AuditTrailRepository $auditTrail) 
-    {
-        $this->_auditTrail = $auditTrail;
-    }
-
     public function login(Request $request)
     {
         if ($request->has('redirect')) {
@@ -66,8 +62,9 @@ class SocialAuthController extends Controller
                 [ 'authorization_provider_id', '=', $provider->id ]
             ])->first();
 
+        $first = false;
         if (! $user) {
-            $nickname = self::getNextAvailableNickname($providerUser->getName());
+            $nickname = self::getNextAvailableNickname($providerUser->getName() ?: 'Account');
 
             $user = Account::create([
                 'email'          => $providerUser->getEmail(),
@@ -78,14 +75,12 @@ class SocialAuthController extends Controller
                 'authorization_provider_id'  => $provider->id
             ]);
 
-            // Register an audit trail for the user logging in for the first time.
-            $this->_auditTrail->store(AuditTrail::ACTION_PROFILE_FIRST_TIME, $user, $user->id);
-        } else {
-            // Register an audit trail for the user logging in.
-            $this->_auditTrail->store(AuditTrail::ACTION_PROFILE_AUTHENTICATED, $user, $user->id);
+            $first = true;
         }
 
         auth()->login($user);
+
+        event(new AccountAuthenticated($user, $first));
 
         if ($request->session()->has('auth.redirect')) {
             $path = $request->session()->pull('auth.redirect');

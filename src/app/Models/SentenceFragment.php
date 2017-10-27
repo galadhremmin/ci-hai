@@ -4,7 +4,10 @@ namespace App\Models;
 
 class SentenceFragment extends ModelBase
 {
-    protected $fillable = [ 'translation_id' ];
+    protected $fillable = [ 
+        'fragment', 'tengwar', 'comments', 'speech_id', 'translation_id', 'sentence_id',
+        'order', 'is_linebreak', 'type'
+    ];
     
     public function sentence() 
     {

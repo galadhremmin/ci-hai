@@ -5,6 +5,7 @@ import classNames from 'classnames';
 import EDConfig from 'ed-config';
 import EDSearchItem from './search-item';
 import EDBookSection from './book-section';
+import EDComments from 'ed-components/comments';
 
 /**
  * Represents a collection of search results.
@@ -67,10 +68,10 @@ class EDSearchResults extends React.Component {
         }
 
         const element = results[0];
-        window.setTimeout(() => element.scrollIntoView({
+        window.setTimeout(() => element ? element.scrollIntoView({
             behavior: 'smooth',
             block: 'start'
-        }), 500);
+        }) : undefined, 500);
     }
 
     gotoReference(normalizedWord, urlChanged) {
@@ -257,7 +258,14 @@ class EDSearchResults extends React.Component {
                                                         onReferenceLinkClick={this.onReferenceLinkClick.bind(this)}/>
                                 )}
                             </section>
-                        ) : ''}
+                        ) : undefined}
+                        {this.props.bookData.sections.length > 0 && this.props.bookData.single ? <div>
+                            <hr />
+                            <EDComments morph={'translation'} 
+                                        entityId={this.props.bookData.sections[0].glosses[0].id} 
+                                        accountId={EDConfig.userId()} 
+                                        enabled={true} />
+                        </div> : undefined}
                     </div>
                 )}
             </div>
@@ -272,7 +280,10 @@ class EDSearchResults extends React.Component {
         }
 
         let book = null;
-        if (this.props.bookData) {
+        if (this.props.loading) {
+            book = <div className="sk-spinner sk-spinner-pulse" />;
+            
+        } else if (this.props.bookData) {
             book = this.renderBook();
         }
 

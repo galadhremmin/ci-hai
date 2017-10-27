@@ -14,7 +14,7 @@
   </p>
   @foreach ($versions as $v)
     <h3>
-      {{ $v->created_at->format('Y-m-d H:i') }}
+      <span class="date">{{ $v->created_at }}</span>
       @if ($v->is_latest) 
         · <em class="text-info">Latest version</em>
       @elseif (! $v->origin_translation_id)
@@ -31,7 +31,7 @@
 
     @include('_shared._comments', [
       'entity_id' => $v->id,
-      'context'   => 'translation',
+      'morph'     => 'translation',
       'enabled'   => $v->is_latest
     ])
     <hr>
@@ -40,7 +40,7 @@
 @endsection
 
 @section('scripts')
-  <script type="text/javascript" src="/js/comment.js" async></script>
+  <script type="text/javascript" src="@assetpath(/js/comment.js)" async></script>
 @endsection
 
 @section('styles')

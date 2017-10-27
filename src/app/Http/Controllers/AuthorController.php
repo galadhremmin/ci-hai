@@ -2,26 +2,46 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\{
+    Auth,
+    Storage
+};
 
-use App\Models\{ Account, AuditTrail };
-use App\Repositories\{ AuditTrailRepository, StatisticsRepository };
-use App\Helpers\MarkdownParser;
+use App\Adapters\DiscussAdapter;
+use App\Repositories\StatisticsRepository;
+use App\Helpers\{
+    MarkdownParser,
+    StorageHelper
+};
+use App\Events\{
+    AccountChanged,
+    AccountAvatarChanged
+};
+
+use App\Models\{ 
+    Account, 
+    ForumPost,
+    Translation,
+    Sentence
+};
 
 class AuthorController extends Controller
 {
-    protected $_auditTrail;
+    protected $_discussAdapter;
     protected $_statisticsRepository;
+    protected $_storageHelper;
 
-    public function __construct(AuditTrailRepository $auditTrail, StatisticsRepository $statisticsRepository)
+    public function __construct(DiscussAdapter $discussAdapter, 
+        StatisticsRepository $statisticsRepository, StorageHelper $storageHelper)
     {
-        $this->_auditTrail           = $auditTrail;
+        $this->_discussAdapter       = $discussAdapter;
         $this->_statisticsRepository = $statisticsRepository;
+        $this->_storageHelper        = $storageHelper;
     }
 
-    public function index(Request $request, $id = null, $nickname = '')
+    public function index(Request $request, int $id = null, $nickname = '')
     {
         $author  = $this->getAccount($request, $id);
         $profile = '';
@@ -38,13 +58,74 @@ class AuthorController extends Controller
             'author'  => $author,
             'profile' => $profile,
             'stats'   => $stats,
-            'avatar'  => $author && $author->has_avatar
-                ? Storage::url('avatars/'.$author->id.'.png')
-                : null
+            'avatar'  => $this->_storageHelper->accountAvatar($author, false /* = _null_ if none exists */)
         ]);
     }
 
-    public function edit(Request $request, $id = null)
+    public function translations(Request $request, int $id = null)
+    {
+        $author = Account::findOrFail($id);
+        $translations = Translation::active()
+            ->forAccount($id)
+            ->with('word', 'sense.word', 'language', 'translation_group')
+            ->orderBy('id', 'desc')
+            ->limit(100)
+            ->get();
+        
+        return view('author.list-translation', [
+            'translations' => $translations,
+            'author'       => $author
+        ]);
+    }
+
+    public function sentences(Request $request, int $id = null)
+    {
+        $author = Account::findOrFail($id);
+        $sentences = Sentence::approved()
+            ->forAccount($id)
+            ->with('language')
+            ->orderBy('id', 'desc')
+            ->limit(100)
+            ->get();
+        
+        return view('author.list-sentence', [
+            'sentences' => $sentences,
+            'author'    => $author
+        ]);
+    }
+
+    public function posts(Request $request, int $id)
+    {
+        $noOfPosts = ForumPost::forAccount($id)->count();
+        $pageSize = 10;
+        $page = $request->has('page') 
+            ? intval($request->input('page')) 
+            : 0;
+
+        $posts = ForumPost::forAccount($id)
+            ->with('forum_thread')
+            ->where([
+                ['is_deleted', 0],
+                ['is_hidden', 0]
+            ])
+            ->orderBy('id', 'desc')
+            ->skip($page * $pageSize)
+            ->take($pageSize)
+            ->get();
+
+        $adapted = $this->_discussAdapter->adaptForTimeline($posts);
+        $author = Account::findOrFail($id);
+
+        return view('author.list-posts', [
+            'posts'     => $adapted,
+            'noOfPosts' => $noOfPosts,
+            'noOfPages' => ceil($noOfPosts / $pageSize),
+            'page'      => $page,
+            'author'    => $author
+        ]);
+    }
+
+    public function edit(Request $request, int $id = 0)
     {
         $author = $this->getAccount($request, $id);
 
@@ -67,83 +148,93 @@ class AuthorController extends Controller
         
         if ($request->hasFile('avatar')) {
             $file = $request->file('avatar');
-            
-            $valid = $file->isValid();
-            $size  = false;
-            if ($valid) {
-                $size = getimagesize($file->path());
-                $valid = $size !== false && $size[0] > 0 && $size[1] > 0;
-            }
-
-            if ($valid) {
-                list($width, $height) = $size;
-
-                $factor = config('ed.avatar_size') / max($width, $height);
-
-                $newWidth  = ceil($width * $factor);
-                $newHeight = ceil($height * $factor);
-
-                try {
-                    // Read the original image into memory, and scale it to its destination size + 1.
-                    // The extra 'bleed' is used to remedy a scaling bug in PHP which results in a black
-                    // border in the lower as well as the right corner of the image.
-                    $original = imagecreatefromstring(file_get_contents($file->path()));
-                    $avatar   = imagescale($original, $newWidth + 1, $newHeight + 1, IMG_BICUBIC);
-
-                    // Having scaled the image (using the bicubic algorithm), remove the 'bleed' and 
-                    // compose the final avatar.
-                    $finalAvatar = imagecreatetruecolor($newWidth, $newHeight);
-                    imagecopyresized($finalAvatar, $avatar, 0, 0, 0, 0, $newWidth, $newHeight, $newWidth, $newWidth);
-
-                    // Turn the avatar into a string. There is no known save into memory option in GD
-                    // at the time when this was developed, thus use the output buffer to achive the
-                    // same effect.
-                    ob_start();
-                    imagepng($finalAvatar);
-                    $avatarAsString = ob_get_clean();
-
-                    Storage::disk('local')->put('public/avatars/'.$author->id.'.png', $avatarAsString);
-                    
-                    $author->has_avatar = true;
-                } catch (Exception $ex) {
-                    // Images can't be processed, so bail
-                    $author->has_avatar = false;
-                } finally {
-                    // Ensure to always free up memory.
-                    if (is_resource($original)) {
-                        imagedestroy($original);
-                    }
-                    
-                    if (is_resource($avatar)) {
-                        imagedestroy($avatar);
-                    }
-
-                    if (is_resource($finalAvatar)) {
-                        imagedestroy($finalAvatar);
-                    }
-                }
-            }
-
-            unlink($file->path());
-
-            // Register an audit trail for the changed avatar
-            $this->_auditTrail->store(AuditTrail::ACTION_PROFILE_EDIT_AVATAR, $author);
+            $this->uploadProfile($author, $file);
         }
 
         $author->nickname = $request->input('nickname');
         $author->tengwar  = $request->input('tengwar');
         $author->profile  = $request->input('profile');
-        $author->save();
 
-        // Register an audit trail for the changed profile
-        $this->_auditTrail->store(AuditTrail::ACTION_PROFILE_EDIT, $author);
+        $changed = $author->isDirty();
+        if ($changed) {
+            $author->save();
+
+            // Register an audit trail for the changed profile
+            event(new AccountChanged($author));
+        }
 
         return redirect()->route('author.my-profile');
     }
 
+    private function uploadProfile(Account $author, UploadedFile $file)
+    {
+        $valid = $file->isValid();
+        $size  = false;
+        if ($valid) {
+            $size = getimagesize($file->path());
+            $valid = $size !== false && $size[0] > 0 && $size[1] > 0;
+        }
+
+        if ($valid) {
+            list($width, $height) = $size;
+
+            $factor = config('ed.avatar_size') / max($width, $height);
+
+            $newWidth  = ceil($width * $factor);
+            $newHeight = ceil($height * $factor);
+
+            try {
+                // Read the original image into memory, and scale it to its destination size + 1.
+                // The extra 'bleed' is used to remedy a scaling bug in PHP which results in a black
+                // border in the lower as well as the right corner of the image.
+                $original = imagecreatefromstring(file_get_contents($file->path()));
+                $avatar   = imagescale($original, $newWidth + 1, $newHeight + 1, IMG_BICUBIC);
+
+                // Having scaled the image (using the bicubic algorithm), remove the 'bleed' and 
+                // compose the final avatar.
+                $finalAvatar = imagecreatetruecolor($newWidth, $newHeight);
+                imagecopyresized($finalAvatar, $avatar, 0, 0, 0, 0, $newWidth, $newHeight, $newWidth, $newWidth);
+
+                // Turn the avatar into a string. There is no known save into memory option in GD
+                // at the time when this was developed, thus use the output buffer to achive the
+                // same effect.
+                ob_start();
+                imagepng($finalAvatar);
+                $avatarAsString = ob_get_clean();
+
+                Storage::disk('local')->put('public/avatars/'.$author->id.'.png', $avatarAsString);
+                
+                $author->has_avatar = true;
+            } catch (Exception $ex) {
+                // Images can't be processed, so bail
+                $author->has_avatar = false;
+            } finally {
+                // Ensure to always free up memory.
+                if (isset($original) && is_resource($original)) {
+                    imagedestroy($original);
+                }
+                
+                if (isset($avatar) && is_resource($avatar)) {
+                    imagedestroy($avatar);
+                }
+
+                if (isset($finalAvatar) && is_resource($finalAvatar)) {
+                    imagedestroy($finalAvatar);
+                }
+            }
+
+            $author->save();
+        }
+
+        unlink($file->path());
+
+        // Register an audit trail for the changed avatar
+        event(new AccountAvatarChanged($author));
+    }
+
     private function getAccount(Request $request, $id)
     {
-        if (! is_numeric($id)) {
+        if (! is_numeric($id) || ! $id) {
             $id = 0;
 
             if (Auth::check()) {

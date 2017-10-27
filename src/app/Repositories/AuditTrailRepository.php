@@ -3,30 +3,26 @@
 namespace App\Repositories;
 
 use App\Helpers\LinkHelper;
-use App\Models\{ Account, AuditTrail, Favourite, FlashcardResult, ForumContext, ForumPost, Sentence, Translation };
+use App\Models\{ 
+    Account, 
+    AuditTrail, 
+    FlashcardResult, 
+    ForumPost, 
+    ModelBase, 
+    Sentence, 
+    Translation 
+};
+use App\Models\Initialization\Morphs;
 
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Database\Eloquent\Relations\Relation;
 
-class AuditTrailRepository
+class AuditTrailRepository implements Interfaces\IAuditTrailRepository
 {
     protected $_link;
 
     public function __construct(LinkHelper $link)
     {
         $this->_link = $link;
-    }
-
-    public static function mapMorps() 
-    {
-        Relation::morphMap([
-            'account'     => Account::class,
-            'favourite'   => Favourite::class,
-            'forum'       => ForumPost::class,
-            'sentence'    => Sentence::class,
-            'translation' => Translation::class,
-            'flashcard'   => FlashcardResult::class
-        ]);
     }
 
     public function get(int $noOfRows, int $skipNoOfRows = 0, $previousItem = null)
@@ -109,7 +105,7 @@ class AuditTrailRepository
                         break;
                 }
 
-                $entity = '<a href="/api/v1/forum/'.$action->entity->id.'">a comment</a>';
+                $entity = '<a href="'.route('forum.show', ['id' => $action->entity->id]).'">a comment</a>';
             } else if ($action->entity instanceof FlashcardResult) {
                 switch ($action->action_id) {
                     case AuditTrail::ACTION_FLASHCARD_FIRST_CARD:
@@ -178,37 +174,42 @@ class AuditTrailRepository
             : $trail;
     }
 
-    public function store(int $action, $entity, int $userId = 0)
+    public function store(int $action, $entity, int $userId = 0, bool $is_elevated = null)
     {
         if ($userId === 0) {
             // Is the user authenticated?
             if (! Auth::check()) {
-                return;
-            }
+                if (($entity instanceof ModelBase && $entity->hasAttribute('account_id')) ||
+                     property_exists($entity, 'account_id')) {
+                    $userId = $entity->account_id;
+                }
 
-            $userId = Auth::user()->id;
+                if (! $userId) {
+                    return;
+                }
+            } else {
+                $userId = Auth::user()->id;
+            }
         }
 
         // Retrieve the associated morph map key based on the specified entity.
-        $typeName = null;
-        $map = Relation::morphMap();
-        foreach ($map as $name => $className) {
-            if (is_a($entity, $className)) {
-                $typeName = $name;
-                break;
-            }
-        }
-
+        $typeName = Morphs::getAlias($entity);
         if ($typeName === null) {
             throw new \Exception(get_class($entity).' is not supported.');
         }
 
-        // check whether the specified user is an administrator
-        $request = request();
-        $admin = false;
-        if ($request !== null) {
-            $user = $request->user();
-            $admin = $user !== null && $user->isIncognito();
+        if ($is_elevated === null) {
+            // check whether the specified user is an administrator
+            $request = request();
+            $is_elevated = false;
+            if ($request !== null) {
+                $user = $request->user();
+                $is_elevated = $user !== null && $user->isIncognito();
+            }
+        }
+        
+        if ($is_elevated === null) {
+            $is_elevated = false;
         }
 
         AuditTrail::create([
@@ -216,7 +217,7 @@ class AuditTrailRepository
             'entity_id'   => $entity->id,
             'entity_type' => $typeName,
             'action_id'   => $action,
-            'is_admin'    => $admin
+            'is_admin'    => $is_elevated
         ]);
     }
 }

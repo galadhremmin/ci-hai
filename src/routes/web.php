@@ -22,6 +22,12 @@ Route::get('/author/{id}',              [ 'uses' => 'AuthorController@index'    
     ->where([ 'id' => '[0-9]+' ])->name('author.profile-without-nickname');
 Route::get('/author/{id}-{nickname}',   [ 'uses' => 'AuthorController@index'    ])
     ->where([ 'id' => '[0-9]+', 'nickname' => $urlSeoReg ])->name('author.profile');
+Route::get('/author/{id}/translations', [ 'uses' => 'AuthorController@translations' ])
+    ->where([ 'id' => '[0-9]+' ])->name('author.translations');
+Route::get('/author/{id}/sentences', [ 'uses' => 'AuthorController@sentences' ])
+    ->where([ 'id' => '[0-9]+' ])->name('author.sentences');
+Route::get('/author/{id}/posts', [ 'uses' => 'AuthorController@posts' ])
+    ->where([ 'id' => '[0-9]+' ])->name('author.posts');
 
 // Phrases
 Route::get('/phrases',                     [ 'uses' => 'SentenceController@index'      ])
@@ -36,6 +42,8 @@ Route::get('/phrases/{langId}-{langName}/{sentId}-{sentName}', [ 'uses' => 'Sent
 Route::get('/w/{word}',               [ 'uses' => 'BookController@pageForWord' ]);
 Route::get('/wt/{id}',                [ 'uses' => 'BookController@pageForTranslationId' ])
     ->where([ 'id' => '[0-9]+' ])->name('translation.ref');
+    Route::get('/wt/{id}/latest',     [ 'uses' => 'BookController@redirectToLatest' ])
+        ->where([ 'id' => '[0-9]+' ])->name('translation.ref.latest');
 Route::get('/wt/{id}/versions',       [ 'uses' => 'BookController@versions' ])
     ->where([ 'id' => '[0-9]+' ])->name('translation.ref.version');
 
@@ -47,6 +55,8 @@ Route::group([ 'middleware' => 'auth' ], function () {
     Route::get('/dashboard/flashcard',       [ 'uses' => 'FlashcardController@index' ])->name('flashcard');
     Route::get('/dashboard/flashcard/{id}',  [ 'uses' => 'FlashcardController@cards' ])
         ->where([ 'id' => '[0-9]+' ])->name('flashcard.cards');
+    Route::get('/dashboard/flashcard/{id}/results', [ 'uses' => 'FlashcardController@list' ])
+        ->where([ 'id' => '[0-9]+' ])->name('flashcard.list');
     Route::post('/dashboard/flashcard/card', [ 'uses' => 'FlashcardController@card' ])->name('flashcard.card');
     Route::post('/dashboard/flashcard/test', [ 'uses' => 'FlashcardController@test' ])->name('flashcard.test');
 
@@ -73,6 +83,17 @@ Route::get('/federated-auth/callback/{providerName}', 'SocialAuthController@call
 // Sitemap
 Route::get('sitemap/{context}', 'SitemapController@index');
 
+// Public resources
+Route::group([ 
+    'namespace'  => 'Resources'
+], function () {
+    Route::resource('discuss', 'DiscussController', [
+        'only' => [ 'index', 'show' ]
+    ]);
+    Route::get('discuss/find-thread/{id}', 'DiscussController@resolveThread')
+        ->where([ 'id' => '[0-9]+' ])->name('discuss.find-thread');
+});
+
 // Restricted resources
 Route::group([ 
     'namespace'  => 'Resources', 
@@ -80,9 +101,28 @@ Route::group([
     'middleware' => ['auth']
 ], function () {
 
+    // Discuss
+    Route::resource('discuss', 'DiscussController', [
+        'only' => [ 'create', 'store' ]
+    ]);
+
     // Contribute
-    Route::resource('translation-review', 'TranslationReviewController');
-    Route::get('translation-review/{id}/destroy', 'TranslationReviewController@confirmDestroy')->name('translation-review.confirm-destroy');
+    Route::resource('contribution', 'ContributionController', [
+        'except' => ['create']
+    ]);
+    Route::get('contribution/create/{morph}', 'ContributionController@create')
+        ->where(['morph' => '[a-z]+'])->name('contribution.create');
+    Route::get('contribution/{id}/destroy', 'ContributionController@confirmDestroy')
+        ->name('contribution.confirm-destroy');
+    Route::post('contribution/substep-validate', 'ContributionController@validateSubstep')
+        ->name('contribution.substep-validate');
+    Route::post('contribution/validate', 'ContributionController@validateRequest')
+        ->name('contribution.validate');
+
+    // Note: it is not a mistake to use the sentence controller in this instance. The functionality
+    //       implemented in this method is generic.
+    Route::post('contribution/sentence/parse-fragment/{name}', 'SentenceController@parseFragments')
+        ->name('contribution.parse-fragment');
 });
 
 // Admin resources
@@ -115,10 +155,10 @@ Route::group([
 
     Route::get('translation/list/{id}', 'TranslationController@listForLanguage')->name('translation.list');
 
-    Route::get('translation-review/list', 'TranslationReviewController@list')->name('translation-review.list');
-    Route::get('translation-review/{id}/reject', 'TranslationReviewController@confirmReject')->name('translation-review.confirm-reject');
-    Route::put('translation-review/{id}/approve', 'TranslationReviewController@updateApprove')->name('translation-review.approve');
-    Route::put('translation-review/{id}/reject', 'TranslationReviewController@updateReject')->name('translation-review.reject');
+    Route::get('contribution/list', 'ContributionController@list')->name('contribution.list');
+    Route::get('contribution/{id}/reject', 'ContributionController@confirmReject')->name('contribution.confirm-reject');
+    Route::put('contribution/{id}/approve', 'ContributionController@updateApprove')->name('contribution.approve');
+    Route::put('contribution/{id}/reject', 'ContributionController@updateReject')->name('contribution.reject');
     
 });
 

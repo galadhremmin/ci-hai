@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Resources;
 
-use App\Models\Speech;
-
-use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+
+use App\Models\Speech;
+use App\Http\Controllers\Controller;
+use App\Events\{
+    SpeechDestroyed
+};
 
 class SpeechController extends Controller
 {
@@ -60,6 +63,8 @@ class SpeechController extends Controller
         }
 
         $speech->delete();
+
+        event(new SpeechDestroyed($speech));
 
         return redirect()->route('speech.index');
     }

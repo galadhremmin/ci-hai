@@ -4,18 +4,13 @@ namespace App\Models;
 
 class Translation extends ModelBase
 {
-    use Traits\HasAccountTrait;
+    use Traits\HasAccount;
     
     protected $fillable = [ 
         'account_id', 'language_id', 'word_id', 'speech_id', 'translation_group_id', 'sense', 
         'translation', 'source', 'comments', 'notes', 'is_uncertain', 'is_rejected', 'tengwar',
         'word', 'external_id'
     ];
-
-    public function account() 
-    {
-        return $this->belongsTo(Account::class);
-    }
 
     public function sense() 
     {
@@ -52,9 +47,9 @@ class Translation extends ModelBase
         return $this->hasMany(SentenceFragment::class);
     }
 
-    public function translation_reviews() 
+    public function contributions() 
     {
-        return $this->hasMany(TranslationReview::class);
+        return $this->hasMany(Contribution::class);
     }
 
     public function favourites() 

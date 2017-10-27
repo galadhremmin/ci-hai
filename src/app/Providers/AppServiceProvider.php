@@ -4,7 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
-use App\Repositories\AuditTrailRepository;
+use App\Models\Initialization\Morphs;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -15,11 +15,21 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        AuditTrailRepository::mapMorps();
+        Morphs::map();
 
         // @markdown method injection
         Blade::directive('markdown', function (string $data) {
-            return "<?php \$md = new \App\Helpers\MarkdownParser(['>', '#']); echo \$md->parse($data); ?>";
+            return "<?php echo (new \App\Helpers\MarkdownParser)->parse($data); ?>";
+        });
+
+        Blade::directive('assetpath', function (string $filePath) {
+            $root = '/v'.config('ed.version');
+
+            if (empty($filePath)) {
+                return $root;
+            }
+
+            return $root.($filePath[0] === '/' ? '' : '/').$filePath;
         });
     }
 

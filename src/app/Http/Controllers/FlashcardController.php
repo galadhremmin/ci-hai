@@ -2,22 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{AuditTrail, Flashcard, FlashcardResult, Language, Translation};
-use App\Helpers\MarkdownParser;
-use App\Repositories\AuditTrailRepository;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
+use App\Helpers\MarkdownParser;
+use App\Events\FlashcardFlipped;
+use App\Models\{
+    Flashcard, 
+    FlashcardResult, 
+    Language, 
+    Translation,
+    Speech
+};
+
 class FlashcardController extends Controller
 {
-    protected $_auditTrail;
-
-    public function __construct(AuditTrailRepository $auditTrail) 
-    {
-        $this->_auditTrail = $auditTrail;
-    }
-
     public function index(Request $request)
     {
         $flashcards = Flashcard::all()
@@ -70,6 +70,22 @@ class FlashcardController extends Controller
         return view('flashcard.cards', ['flashcard' => $flashcard]);
     }
 
+    public function list(Request $request, int $id)
+    {
+        $flashcard = Flashcard::findOrFail($id);
+        $userId = $request->user()->id;
+        $results = FlashcardResult::forAccount($userId)
+            ->where('flashcard_id', $id)
+            ->with('translation', 'translation.word')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return view('flashcard.list', [
+            'results'  => $results,
+            'flashcard' => $flashcard
+        ]);
+    }
+
     public function card(Request $request, int $n = 0)
     {
         $this->validate($request, [
@@ -119,10 +135,18 @@ class FlashcardController extends Controller
         // Compile a list of options
         $options = [$translation->translation];
 
-        $fakeOptions = $q->where([
-                ['id', '<>', $translation->id],
-                ['translation', '<>', $translation->translation]
-            ])
+        // group verbs w/ one another as they tend to be in the infinitive
+        // in English.
+        $filters = [
+            ['id', '<>', $translation->id],
+            ['translation', '<>', $translation->translation]
+        ];
+        $verbSpeech = Speech::where('name', 'verb')->first();
+        if ($verbSpeech && $translation->speech_id === $verbSpeech->id) {
+            $filters[] = ['speech_id', $verbSpeech->id];
+        }
+
+        $fakeOptions = $q->where($filters)
             ->select('translation')
             ->take(4)
             ->get();
@@ -177,31 +201,7 @@ class FlashcardController extends Controller
 
         // Record the progress
         $numberOfCards = FlashcardResult::where('account_id', $result->account_id)->count();
-        $qualifyingAction = 0;
-        switch ($numberOfCards) {
-            case 1:
-                $qualifyingAction = AuditTrail::ACTION_FLASHCARD_FIRST_CARD;
-                break;
-            case 10:
-                $qualifyingAction = AuditTrail::ACTION_FLASHCARD_CARD_10;
-                break;
-            case 50:
-                $qualifyingAction = AuditTrail::ACTION_FLASHCARD_CARD_50;
-                break;
-            case 100:
-                $qualifyingAction = AuditTrail::ACTION_FLASHCARD_CARD_100;
-                break;
-            case 200:
-                $qualifyingAction = AuditTrail::ACTION_FLASHCARD_CARD_200;
-                break;
-            case 500:
-                $qualifyingAction = AuditTrail::ACTION_FLASHCARD_CARD_500;
-                break;
-        }
-
-        if ($qualifyingAction !== 0) {
-            $this->_auditTrail->store($qualifyingAction, $result);
-        }
+        event(new FlashcardFlipped($result, $numberOfCards));
 
         return [
             'correct'     => $ok,

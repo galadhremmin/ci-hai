@@ -4,7 +4,12 @@ namespace App\Models;
 
 class Sentence extends ModelBase
 {
-    use Traits\HasAccountTrait;
+    use Traits\HasAccount;
+
+    protected $fillable = [
+        'description', 'language_id', 'source', 'is_neologism', 'is_approved', 'account_id',
+        'long_description', 'name'
+    ];
     
     public function sentence_fragments() 
     {
@@ -15,11 +20,6 @@ class Sentence extends ModelBase
     public function language() 
     {
         return $this->belongsTo(Language::class);
-    }
-
-    public function account()
-    {
-        return $this->belongsTo(Account::class);
     }
     
     public function scopeNeologisms($query)

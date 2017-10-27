@@ -45,12 +45,16 @@
               <td class="text-right">{{ $stats['noOfWords'] }}</td>
             </tr>
             <tr>
-              <th>Translations</th>
+              <th><a href="{{ route('author.translations', ['id' => $author->id]) }}">Glosses</a></th>
               <td class="text-right">{{ $stats['noOfTranslations'] }}</td>
             </tr>
             <tr>
-              <th>Phrases</th>
+              <th><a href="{{ route('author.sentences', ['id' => $author->id]) }}">Phrases</a></th>
               <td class="text-right">{{ $stats['noOfSentences'] }}</td>
+            </tr>
+            <tr>
+              <th><a href="{{ route('author.posts', ['id' => $author->id]) }}">Posts</a></th>
+              <td class="text-right">{{ $stats['noOfPosts'] }}</td>
             </tr>
             <tr>
               <th><span class="glyphicon glyphicon-thumbs-up"></span> Thanks</th>
@@ -68,11 +72,11 @@
   <hr>
   @include('_shared._comments', [
     'entity_id' => $author->id,
-    'context'   => 'account',
+    'morph'     => 'account',
     'enabled'   => true
   ])
 @endsection
 
 @section('scripts')
-  <script type="text/javascript" src="/js/comment.js" async></script>
+  <script type="text/javascript" src="@assetpath(/js/comment.js)" async></script>
 @endsection

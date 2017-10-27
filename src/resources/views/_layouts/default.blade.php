@@ -10,18 +10,19 @@
   <meta name="keywords" content="sindarin, quenya, noldorin, quendya, elvish, tolkien, nandorin, ilkorin, black speech, westron">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <link href="/css/app.css" rel="stylesheet">
   <meta name="theme-color" value="#333333">
   <link rel="apple-touch-icon-precomposed" href="/img/favicons/apple-touch-icon-precomposed.png">
   <link rel="icon" type="image/png" href="/img/favicons/favicon-194x194.png">
   <link rel="manifest" href="/img/favicons/manifest.json">
+  <link href="https://fonts.googleapis.com/css?family=Lora:400,400i&amp;subset=latin-ext" rel="stylesheet">
+  <link href="@assetpath(/css/app.css)" rel="stylesheet">
+  @yield('styles')
   @if (!empty(config('ed.header_view')))
     @include(config('ed.header_view'))
   @endif
-  @yield('styles')
 </head>
-<body class="{{ $admin ? 'ed-admin' : ($admin === false ? 'ed-user' : 'ed-anonymous') }}">
-  <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+<body class="{{ $isAdmin ? 'ed-admin' : ($isAdmin === false ? 'ed-user' : 'ed-anonymous') }}" data-user-id="{{ $user ? $user->id : '0' }}" data-v="{{ config('ed.version') }}">
+  <div class="navbar navbar-default" role="navigation">
     <div class="container">
       <div class="navbar-header">
         <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
@@ -35,15 +36,30 @@
       <div class="navbar-collapse collapse">
         <ul class="nav navbar-nav">
           <li class="{{ active('') }}"><a href="/">Home</a></li>
-          <li class="{{ active(['sentence.public', 'sentence.public.language', 'sentence.public.sentence']) }}"><a href="{{ route('sentence.public') }}">Phrases</a></li>
           <li class="{{ active('about') }}"><a href="{{ route('about') }}">About</a></li>
+          <li class="{{ active('discuss.index') }}"><a href="{{ route('discuss.index') }}">Discuss</a></li>
         </ul>
         <ul class="nav navbar-nav navbar-right">
-          @if (Auth::check())
-          <li class="{{ active('dashboard') }}"><a href="{{ route('dashboard') }}">Dashboard</a></li>
-          <li><a href="{{ route('logout') }}">Log out</a></li>
+          @if ($user)
+          <li class="{{ active('dashboard') }}">
+            <a href="{{ route('dashboard') }}">
+              <span class="glyphicon glyphicon-dashboard"></span> 
+              &nbsp;Dashboard
+            </a>
+          </li>
+          <li>
+            <a href="{{ route('logout') }}">
+              <span class="glyphicon glyphicon-log-out"></span> 
+              &nbsp;Log out
+            </a>
+          </li>
           @else
-          <li class="{{ active('login') }}"><a href="{{ route('login') }}">Log in</a></li>
+          <li class="{{ active('login') }}">
+            <a href="{{ route('login') }}">
+              <span class="glyphicon glyphicon-log-in"></span> 
+              &nbsp; Log in
+            </a>
+          </li>
           @endif
         </ul>
       </div><!--/.nav-collapse -->
@@ -71,17 +87,17 @@
   </div>
 
   <script type="application/json" id="ed-preloaded-languages">{!! $allLanguages !!}</script>
-  <script type="text/javascript" src="/js/manifest.js"></script>
-  <script type="text/javascript" src="/js/vendor.js"></script>
-  <script type="text/javascript" src="/js/ie.js"></script>
-  @if (Auth::check())
-    @if (Auth::user()->isAdministrator())
-    <script type="text/javascript" src="/js/global-plugins-admin.js"></script>
+  <script type="text/javascript" src="@assetpath(/js/manifest.js)"></script>
+  <script type="text/javascript" src="@assetpath(/js/vendor.js)"></script>
+  <script type="text/javascript" src="@assetpath(/js/ie.js)"></script>
+  @if ($user)
+    @if ($isAdmin)
+    <script type="text/javascript" src="@assetpath(/js/global-plugins-admin.js)"></script>
     @else
-    <script type="text/javascript" src="/js/global-plugins-restricted.js"></script>
+    <script type="text/javascript" src="@assetpath(/js/global-plugins-restricted.js)"></script>
     @endif
   @endif
-  <script type="text/javascript" src="/js/global.js" async></script>
+  <script type="text/javascript" src="@assetpath(/js/global.js)" async></script>
   @yield('scripts')
   @if (!empty(config('ed.footer_view')))
     @include(config('ed.footer_view'))
