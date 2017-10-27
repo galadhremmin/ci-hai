@@ -8,9 +8,11 @@
 <div class="jumbotron" style="background-image:url(img/jumbotron/{{ $background }}">
 @else
 <div class="jumbotron">
+@endif
   <h1 title="Welcome!">欢迎</h1>
   <p>
     This is a dictionary for mandarin based on CC-CEDICT.
+  </p>
 </div>
 
 <hr>
