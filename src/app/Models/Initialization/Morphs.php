@@ -8,11 +8,11 @@ use App\Models\{
     AuditTrail, 
     Contribution,
     Favourite, 
-    FlashcardResult, 
+    FlashcardResult,
+    Gloss, 
     ForumDiscussion,
     ForumPost, 
-    Sentence, 
-    Translation 
+    Sentence 
 };
 
 class Morphs 
@@ -26,7 +26,7 @@ class Morphs
             'flashcard'    => FlashcardResult::class,
             'forum'        => ForumPost::class,
             'sentence'     => Sentence::class,
-            'translation'  => Translation::class,
+            'gloss'        => Gloss::class,
             'discussion'   => ForumDiscussion::class
         ]);
     }
@@ -34,15 +34,17 @@ class Morphs
     /**
      * Retrieves an alias for the specified entity. Returns null if no alias was found.
      *
-     * @param Model $entity
+     * @param Model|string $entity
      * @return string|null
      */
-    public static function getAlias($entity)
+    public static function getAlias($entityOrClassName)
     {
         $map = Relation::morphMap();
-        
+        $entityClassName = is_string($entityOrClassName)
+            ? $entityOrClassName : get_class($entityOrClassName);
+
         foreach ($map as $name => $className) {
-            if (is_a($entity, $className)) {
+            if ($className === $entityClassName) {
                 return $name;
             }
         }

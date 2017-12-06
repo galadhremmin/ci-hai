@@ -4,13 +4,8 @@ namespace App\Repositories;
 
 use Illuminate\Support\Facades\DB;
 use App\Models\{ 
-    Account, 
-    Contribution, 
     ForumThread, 
-    ForumPost, 
-    ForumPostLike, 
-    Translation, 
-    Sentence 
+    ForumPost
 };
 use App\Models\Initialization\Morphs;
 
@@ -22,13 +17,12 @@ class ForumRepository
 
         $result = ForumThread::where('entity_type', $morph)
             ->whereIn('entity_id', $ids)
-            ->select('entity_id', DB::raw('count(*) as count'))
-            ->groupBy('entity_id')
+            ->select('entity_id', 'number_of_posts')
             ->get();
 
         $groupedResult = [];
         foreach ($result as $r) {
-            $groupedResult[$r->entity_id] = $r->count;
+            $groupedResult[$r->entity_id] = $r->number_of_posts;
         }
 
         return $groupedResult;

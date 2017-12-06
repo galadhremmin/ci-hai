@@ -2,9 +2,11 @@ import React from 'react';
 import axios from 'axios';
 import EDConfig from 'ed-config';
 import classNames from 'classnames';
+import EDMarkdownEditor from 'ed-components/markdown-editor';
 import { EDStatefulFormComponent } from 'ed-form';
-import { Parser as HtmlToReactParser } from 'html-to-react';
-import { polyfill as enableSmoothScrolling } from 'smoothscroll-polyfill';
+import { Parser as HtmlToReactParser, ProcessNodeDefinitions } from 'html-to-react';
+import { smoothScrollIntoView } from 'ed-scrolling';
+import { transcribe } from 'ed-tengwar';
 
 class EDComments extends EDStatefulFormComponent {
     constructor(props) {
@@ -25,8 +27,6 @@ class EDComments extends EDStatefulFormComponent {
             show_reply: false,
             jump_post_id
         };
-
-        enableSmoothScrolling();
     }
 
     componentWillMount() {
@@ -38,7 +38,7 @@ class EDComments extends EDStatefulFormComponent {
     componentDidMount() {
         // Load comments if the client is specifically requesting to display them.
         if (this.state.jump_post_id || ! this.isInfiniteScroll()) {
-            this.load();
+            this.load( this.getPage() );
         } else {
             this.onScroll();
         }
@@ -56,23 +56,32 @@ class EDComments extends EDStatefulFormComponent {
         window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
     }
 
-    load(fromId = this.state.jump_post_id || 0, parentPostId) {
+    load(fromId = 0, parentPostId) {
         this.setState({
             loading: true
         });
 
-        if (this.isInfiniteScroll() && this.state.jump_post_id > 0 && fromId === this.state.highlighted_post_id) {
-            // retract once, as the from_id parameter will _not_ be included in the result set in
-            // infinite scroll mode, as it assumes it is already loaded.
-            fromId += 1;
-        }
-
+        const jumpTo = this.state.jump_post_id;
         const url = EDConfig.api(
             `/forum?morph=${this.props.morph}&entity_id=${this.props.entityId}&order=${this.props.order}` + 
-            (fromId ? `&from_id=${fromId}` : '')
+            (fromId ? `&from_id=${fromId}` : '') +
+            (jumpTo ? `&jump_to=${jumpTo}` : '')
         );
         
         return axios.get(url).then(this.onLoaded.bind(this, fromId || 0));
+    }
+
+    setPage(pageNo) {
+        if (! this.isInfiniteScroll()) {
+            window.location.hash = `#!/page/${pageNo}`; 
+        }
+    }
+
+    getPage() {
+        const hashbang = window.location.hash || '';
+        const match = /!\/page\/([0-9]+)$/.exec(hashbang); 
+
+        return match && match.length === 2 ? parseInt(match[1], 10) : 0; 
     }
 
     onLoaded(fromId, response) {
@@ -86,19 +95,23 @@ class EDComments extends EDStatefulFormComponent {
         const jumpPostId = this.state.jump_post_id || 
             (! this.isInfiniteScroll() && newPosts.length ? newPosts[newPosts.length - 1].id : 0);
 
-        if (fromId === 0 || ! this.isInfiniteScroll()) {
+        if (fromId === 0 || posts.length < 1 || ! this.isInfiniteScroll()) {
             // reload -- start over from the beginning
             posts = newPosts;
 
             // record the current location, as we are reloading
             this.lastPositionY = window.scrollY || window.pageYOffset;
 
-        } else if (posts.length < 1 || posts[0].id === this.state.major_id) {
-            // prepend
-            posts = [...newPosts, ...posts];
         } else {
-            // append
-            posts = [...posts, ...newPosts];
+            const majorId = this.state.major_id;
+            if ((this.isDescendingOrder() && majorId > response.data.major_id) ||
+                (! this.isDescendingOrder() && majorId < response.data.major_id)) {
+                // append
+                posts = [...posts, ...newPosts];
+            } else {
+                // prepend
+                posts = [...newPosts, ...posts];
+            }
         }
 
         this.setState({
@@ -113,15 +126,11 @@ class EDComments extends EDStatefulFormComponent {
             window.setTimeout(() => {
                 const id = `forum-post-${jumpPostId}`;
                 const postContainer = document.getElementById(id);
-
-                if (postContainer) {
-                    postContainer.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                }
+                smoothScrollIntoView(postContainer);
             }, 500);
         }
+
+        this.setPage(this.state.major_id);
     }
 
     onScroll(ev) {
@@ -236,11 +245,7 @@ class EDComments extends EDStatefulFormComponent {
         target.classList.add('unauthorized-animation');
 
         window.setTimeout(() => {
-            messageContainer.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
-
+            smoothScrollIntoView(messageContainer);
             messageContainer.classList.add('unauthorized-animation');
         }, 500);
     }
@@ -265,10 +270,7 @@ class EDComments extends EDStatefulFormComponent {
         });
 
         if (this.textboxContainer) {
-            this.textboxContainer.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
+            smoothScrollIntoView(this.textboxContainer);
         }
     }
 
@@ -344,8 +346,9 @@ class EDComments extends EDStatefulFormComponent {
                 {this.state.post_id ? <p><span className="glyphicon glyphicon-info-sign" /> Editing your comment ({this.state.post_id}):</p> : ''}
                 <form onSubmit={this.onSubmit.bind(this)}>
                     <div className="form-group">
-                        <textarea className="form-control" placeholder="Your comments ..." name="comments" value={this.state.comments} required={true}
-                            onChange={super.onChange.bind(this)} rows={5} />
+                        <EDMarkdownEditor componentProps={{placeholder: 'Your comments ...', required: true}} 
+                            componentId="post-comments" componentName="comments" value={this.state.comments}
+                            rows={8} onChange={super.onChange.bind(this)} />
                     </div>
                     <div className="form-group text-right">
                         <button type="button" className="btn btn-default" onClick={this.onDiscardChanges.bind(this)}>
@@ -377,7 +380,7 @@ class EDComments extends EDStatefulFormComponent {
         </div>;
     }
 
-    renderPost(parser, post) {
+    renderPost(parseHtml, post) {
         return <div key={post.id} className={classNames('forum-post', 
             {'highlight': this.state.highlighted_post_id === post.id})} id={`forum-post-${post.id}`}>
             <div className="post-profile-picture">
@@ -410,7 +413,7 @@ class EDComments extends EDStatefulFormComponent {
                 </div>
                 <div className="post-body">
                     { !post.is_deleted 
-                        ? parser.parse(post.content)
+                        ? parseHtml(post.content)
                         : <em>{post.account.nickname} has redacted their comment.</em>
                     }
                 </div>
@@ -463,15 +466,41 @@ class EDComments extends EDStatefulFormComponent {
     }
 
     render() {
-        let parser = null;
+        let parseHtml = null;
         if (this.state.posts.length > 0) {
-            parser = new HtmlToReactParser();
+            const processNodeDefinitions = new ProcessNodeDefinitions(React);
+            const processingInstructions = [
+            {
+                // Glaemscribe triggered?
+                shouldProcessNode: function (node) {
+                    return node.parent && 
+                        node.parent.name && 
+                        node.parent.name === 'span' &&
+                        node.parent.attribs['data-tengwar-transcribe'];
+                },
+                processNode: function (node, children) {
+                    const mode = node.parent.attribs['data-tengwar-mode'];
+                    return mode ? transcribe(node.data, mode) : node.data;
+                }
+            }, {
+                // Anything else
+                shouldProcessNode: function (node) {
+                    return true;
+                },
+                processNode: processNodeDefinitions.processDefaultNode
+            }];
+
+            const parser = new HtmlToReactParser();
+            parseHtml = content => parser.parseWithInstructions(content, () => true, processingInstructions);
         }
 
         return <div>
             { this.isInfiniteScroll() ? this.renderTools() : undefined}
             <div ref={container => this.container = container}>
-                { this.state.posts.map(this.renderPost.bind(this, parser)) }
+                { this.state.posts.map(this.renderPost.bind(this, parseHtml)) }
+                {(! this.isInfiniteScroll() && this.state.posts.length < 1) 
+                    ? <em>There are currently no posts in this thread. You can leave it be (thus deleting it) or write a comment.</em>
+                    : undefined}
             </div>
             { this.state.loading ? <div className="sk-spinner sk-spinner-pulse" /> : undefined}
             { this.isInfiniteScroll() ? undefined : 

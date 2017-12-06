@@ -22,12 +22,14 @@ mix.webpackConfig({
             'ed-components/error-list': 'elfdict/components/error-list.jsx',
             'ed-components/markdown-editor': 'elfdict/components/markdown-editor.jsx',
             'ed-components/language-select': 'elfdict/components/language-select.jsx',
-            'ed-components/translation-select': 'elfdict/components/translation-select.jsx',
+            'ed-components/gloss-select': 'elfdict/components/gloss-select.jsx',
 
             'ed-config': 'elfdict/config.js',
             'ed-form': 'elfdict/form.js',
             'ed-promise': 'elfdict/promise.js',
             'ed-session-storage-state': 'elfdict/session-storage-state.js',
+            'ed-scrolling': 'elfdict/scrolling.js',
+            'ed-tengwar': 'elfdict/tengwar.js'
         }
     }
 });
@@ -41,25 +43,26 @@ mix.extract([
     'html-to-react',
     'axios',
     'classnames',
-    'smoothscroll-polyfill',
     /* These components are excuded from _vendor.js_ as they are limited to restricted visitors 
     'ed-components/dialog',
     'ed-components/error-list',
-    'ed-components/translation-select',
-    'ed-components/markdown-editor',
+    'ed-components/gloss-select',
     */
+    'ed-components/markdown-editor',
     'ed-components/language-select',
     'ed-components/comments',
     'ed-config',
     'ed-form',
     'ed-promise',
-    'ed-session-storage-state'
+    'ed-session-storage-state',
+    'ed-tengwar'
 ], `${outputDir}/js/vendor.js`);
 
 mix.react([
-    'resources/assets/js/_shared/error.js',
-    'resources/assets/js/navigation.js',
     'resources/assets/js/date.js',
+    'resources/assets/js/transcription.js',
+    'resources/assets/js/navigation.js',
+    'resources/assets/js/_shared/error.js',
     'resources/assets/js/search/index.jsx'
 ], `${outputDir}/js/global.js`);
 
@@ -105,8 +108,8 @@ mix.js([
 ], `${outputDir}/js/comment.js`);
 
 mix.js([
-    'resources/assets/js/translation/admin.jsx'
-], `${outputDir}/js/translation-admin.js`);
+    'resources/assets/js/gloss/admin.jsx'
+], `${outputDir}/js/gloss-admin.js`);
 
 mix.js([
     'resources/assets/js/flashcard/index.jsx'

@@ -18,12 +18,12 @@ use App\Events\{
 use App\Models\{
     Contribution,
     Sentence,
-    Translation
+    Gloss
 };
 use App\Http\Controllers\Contributions\{
     IContributionController,
     SentenceContributionController,
-    TranslationContributionController
+    GlossContributionController
 };
 
 class ContributionController extends Controller
@@ -294,10 +294,8 @@ class ContributionController extends Controller
             ? intval($request->input('substep_id'))
             : 0;
         
-        $id = $request->has('id')
-            ? intval($request->input('id'))
-            : 0;
-
+        $id = $this->getEntityId($request);
+        
         $this->createController($request)->validateSubstep($request, $id, $substepId);
         return response(null, 204);
     }
@@ -315,10 +313,19 @@ class ContributionController extends Controller
     {
         $this->validateContributionRequest($request);
 
-        $id = $request->has('id') 
-            ? intval($request->input('id'))
-            : 0;
+        $id = $this->getEntityId($request);
+
         $this->createController($request)->validateBeforeSave($request, $id);
+    }
+
+    protected function getEntityId(Request $request)
+    {
+        if (! $request->has('id')) {
+            return 0;
+        }
+
+        $entityId = intval($request->input('id'));
+        return $entityId;
     }
 
     /**
@@ -356,7 +363,7 @@ class ContributionController extends Controller
             return;
         }
 
-        abort(401);
+        abort(403);
     }
 
     /**
@@ -422,8 +429,8 @@ class ContributionController extends Controller
         $controllerName = null;
         switch ($modelName)
         {
-            case Translation::class:
-                $controllerName = TranslationContributionController::class;
+            case Gloss::class:
+                $controllerName = GlossContributionController::class;
                 break;
             case Sentence::class:
                 $controllerName = SentenceContributionController::class;

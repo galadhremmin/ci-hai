@@ -3,7 +3,7 @@ import { connect } from 'react-redux';
 import classNames from 'classnames';
 import EDConfig from 'ed-config';
 import { getCard, testCard } from '../actions';
-import { transcribe } from '../../_shared/tengwar';
+import { transcribe } from 'ed-tengwar';
 import { Parser as HtmlToReactParser } from 'html-to-react';
 
 class EDFlashcards extends React.Component {
@@ -43,9 +43,9 @@ class EDFlashcards extends React.Component {
             : undefined;
 
         let comments = undefined;
-        if (this.props.translation && this.props.translation.comments) {
+        if (this.props.gloss && this.props.gloss.comments) {
             const parser = new HtmlToReactParser();
-            comments = parser.parse(this.props.translation.comments);
+            comments = parser.parse(this.props.gloss.comments);
         }
 
         return <article className={classNames('flip-container', { 'flipped': this.props.flip })}>
@@ -75,7 +75,7 @@ class EDFlashcards extends React.Component {
                 <section className="back">
                     { this.props.loading ?
                         <div className="sk-spinner sk-spinner-pulse"></div>
-                        : this.props.translation ? <div>
+                        : this.props.gloss ? <div>
                         <header>
                             <h1>
                                 { this.props.word }
@@ -84,10 +84,10 @@ class EDFlashcards extends React.Component {
                             </h1>
                         </header>
                         <p>
-                            <span className="gloss">{ this.props.translation.translation }</span>
+                            <span className="gloss">{ this.props.gloss.all_translations }</span>
                         </p>
                         { comments ? <div className="comments">{ comments }</div> : '' }
-                        { this.props.translation.source ? <span className="source">[{this.props.translation.source}]</span> : '' }
+                        { this.props.gloss.source ? <span className="source">[{this.props.gloss.source}]</span> : '' }
                         { this.props.correct ? 
                             <p className="text-success">
                                 <span className="glyphicon glyphicon-ok"></span> 
@@ -126,7 +126,7 @@ const mapStateToProps = (state) => {
         options: state.options,
         translation_id: state.translation_id,
         flip: state.flip,
-        translation: state.translation,
+        gloss: state.gloss,
         correct: state.correct
     };
 };

@@ -1,32 +1,37 @@
 <?php
 
 namespace App\Adapters;
+
+use Illuminate\Support\Collection;
+use Carbon\Carbon;
+
 use App\Helpers\{
     LinkHelper, StringHelper, MarkdownParser
 };
 use App\Models\{
-    Language, Translation, Account
+    Account, 
+    Gloss, 
+    Language,
+    Translation
 };
-use Illuminate\Support\Collection;
-use Carbon\Carbon;
 
 class BookAdapter
 {
     /**
-     * Transforms the specified translations array to a view model.
+     * Transforms the specified glosses array to a view model.
      *
-     * @param array $translations
-     * @param array $inflections - an assocative array mapping translations with inflections (optional)
-     * @param mixed $commentsById - an associative array mapping translations with number of comments (optional)
-     * @param string|null $word - the search query yielding the specified list of translations (optional)
-     * @param bool $groupByLanguage - declares whether the translations should be sectioned up by language  (optional)
+     * @param array $glosses - the glosses should be an ordinary PHP object.
+     * @param array $inflections - an assocative array mapping glosses with inflections (optional)
+     * @param mixed $commentsById - an associative array mapping glosses with number of comments (optional)
+     * @param string|null $word - the search query yielding the specified list of glosses (optional)
+     * @param bool $groupByLanguage - declares whether the glosses should be sectioned up by language  (optional)
      * @param bool $atomDate - ATOM format dates? (option)
      * @return mixed - return value is determined by $groupByLanguage
      */
-    public function adaptTranslations(array $translations, array $inflections = [], array $commentsById = [], string $word = null, 
+    public function adaptGlosses(array $glosses, array $inflections = [], array $commentsById = [], string $word = null, 
         bool $groupByLanguage = true, bool $atomDate = true)
     {
-        $numberOfTranslations = count($translations);
+        $numberOfGlosses = count($glosses);
 
         // Reverses phonetic approximations  
         if ($word !== null) {
@@ -34,8 +39,8 @@ class BookAdapter
         }
         
         // * Optimize by dealing with some edge cases first
-        //    - No translation results
-        if ($numberOfTranslations < 1) {
+        //    - No gloss results
+        if ($numberOfGlosses < 1) {
             return [
                 'word' => $word,
                 'sections' => [],
@@ -44,27 +49,58 @@ class BookAdapter
             ];
         }
 
-        // brief interlude - convert markdown to HTML and generate author URLs
-        $markdownParser = new MarkdownParser(['>', '#']);
+        usort($glosses, function ($a, $b) {
+            return $a->id === $b->id ? 0 : ($a->id < $b->id ? -1 : 1);
+        });
+
+        // brief interlude - convert markdown to HTML and generate author URLs, 
+        // and merge translations, where applicable.
         $linker = new LinkHelper();
-        $authorUrls = [];
+        $previousGloss = null;
+        $i = 0;
 
-        foreach ($translations as $translation) {
-            if (!empty($translation->comments)) {
-                $translation->comments = $markdownParser->text($translation->comments);
+        // NOTE: this loop assumes that the collection is in fact ordered by the 
+        //       glosses' ID.
+        while ($i < $numberOfGlosses) {
+            $gloss = $glosses[$i];
+
+            if ($gloss instanceOf Gloss) {
+                // Gloss model entities already have the 'translations' relation, and would therefore
+                // only requiring eager loading. This is not performant to be doing in the adapter, and 
+                // therefore raises an error.
+                if (! $gloss->relationLoaded('translations')) {
+                    throw new \Exception('Failed to adapt gloss '.$gloss->id.' because its relation "translations" is not loaded.');
+                }
+
+            } else {
+                if ($previousGloss === null || $previousGloss->id !== $gloss->id) {
+                    // Glosses do not match, so start over by assigning the current gloss
+                    // an array of translations.
+                    $gloss->translations = [
+                        new Translation(['translation' => $gloss->translation])
+                    ];
+                    unset($gloss->translation);
+
+                    $previousGloss = $gloss;
+
+                } else if ($previousGloss->id === $gloss->id) {
+                    $previousGloss->translations[] = new Translation([
+                        'translation' => $gloss->translation
+                    ]);
+
+                    array_splice($glosses, $i, 1);
+                    $numberOfGlosses -= 1;
+                    continue;
+                }
             }
 
-            if (!isset($authorUrls[$translation->account_id])) {
-                $authorUrls[$translation->account_id] = $linker->author($translation->account_id, $translation->account_name);
-            }
-
-            $translation->account_url = $authorUrls[$translation->account_id];
+            $i += 1;
         }
 
         //    - Just one translation result.
-        if ($numberOfTranslations === 1) {
-            $translation = $translations[0];
-            $language = Language::findOrFail($translation->language_id);
+        if ($numberOfGlosses === 1) {
+            $gloss = $glosses[0];
+            $language = Language::findOrFail($gloss->language_id);
 
             return self::assignColumnWidths([
                 'word' => $word,
@@ -72,24 +108,24 @@ class BookAdapter
                     [
                         // Load the language by examining the first (and only) element of the array
                         'language' => $language,
-                        'glosses'  => [ self::adaptTranslation($translation, new Collection([$language]), $inflections, $commentsById, $atomDate, $linker) ]
+                        'glosses'  => [ $this->adaptGloss($gloss, new Collection([$language]), $inflections, $commentsById, $atomDate, $linker) ]
                     ]
                 ],
                 'single' => true,
-                'sense' => [$translation->sense_id]
+                'sense' => [$gloss->sense_id]
             ], 1);
         }
 
-        // * Multiple translations (possibly across multiple languages)
+        // * Multiple glosses (possibly across multiple languages)
         // Retrieve all applicable languages
         $languageIds = [];
         $gloss2LanguageMap = $groupByLanguage ? [] : [[]];
-        foreach ($translations as $translation) {
-            if (! in_array($translation->language_id, $languageIds)) {
-                $languageIds[] = $translation->language_id;
+        foreach ($glosses as $gloss) {
+            if (! in_array($gloss->language_id, $languageIds)) {
+                $languageIds[] = $gloss->language_id;
 
                 if ($groupByLanguage) {
-                    $gloss2LanguageMap[$translation->language_id] = [];
+                    $gloss2LanguageMap[$gloss->language_id] = [];
                 }
             }
         }
@@ -99,21 +135,21 @@ class BookAdapter
             ->orderByPriority()
             ->get();
 
-        // Create a translation to language map which will be used later to associate the translations to their
+        // Create a gloss to language map which will be used later to associate the glosses to their
         // languages. This is a necessary grouping operation due to the sort operation performed later on.
         $sense = [];
         $noOfSense = 0;
-        foreach ($translations as $translation) {
+        foreach ($glosses as $gloss) {
+            $adapted = $this->adaptGloss($gloss, $allLanguages, $inflections, $commentsById, $atomDate, $linker);
             if ($word !== null) {
-                self::calculateRating($translation, $word);
+                self::calculateRating($adapted, $word);
             }
 
-            // adapt translation for the view
-            $gloss2LanguageMap[$groupByLanguage ? $translation->language_id : 0][] = 
-                self::adaptTranslation($translation, $allLanguages, $inflections, $commentsById, $atomDate, $linker);
+            // adapt gloss for the view
+            $gloss2LanguageMap[$groupByLanguage ? $gloss->language_id : 0][] = $adapted;
             
             // Compose an array of senses in an ascending order.
-            $senseId = $translation->sense_id;
+            $senseId = $gloss->sense_id;
             if ($noOfSense === 0 || $senseId > $sense[$noOfSense - 1]) {
                 $sense[] = $senseId;
                 $noOfSense += 1;
@@ -148,10 +184,21 @@ class BookAdapter
 
                 $glosses = $gloss2LanguageMap[$language->id];
 
-                // Sort the translations based on their previously calculated rating.
+                // Sort the glosses based on their previously calculated rating.
                 if ($word !== null) {
                     usort($glosses, function ($a, $b) {
-                        return $a->rating > $b->rating ? -1 : ($a->rating === $b->rating ? 0 : 1);
+                        if ($a->rating < 0 && $b->rating < 0) {
+                            $cmp = $a->rating < $b->rating ? -1 : ($a->rating === $b->rating ? 0 : 1);
+                        } else {
+                            $cmp = $a->rating > $b->rating ? -1 : ($a->rating === $b->rating ? 0 : 1);
+                        }
+                        
+                        if ($cmp !== 0) {
+                            return $cmp;
+                        }
+                        
+                        $cmp = strnatcmp($a->word, $b->word);
+                        return $cmp === 0 ? 0 : ($cmp < 0 ? -1 : 1);
                     });
                 }
 
@@ -183,38 +230,110 @@ class BookAdapter
         ];
     }
 
-    private static function adaptTranslation($translation, Collection $languages, array $inflections, array $commentsById, 
-        bool $atomDate, LinkHelper $linker) 
+    /**
+     * Adapts the specified gloss for the view model. The gloss can either be an instance of the Eloquent Gloss
+     * entity class, or a plain PHP object (stdClass) generated by the Query Builder. The adapter creates the 
+     * following properties on the gloss: all_translations (a string representation of the translations relation),
+     * language (a reference to the language object associated with the entity on stdClass only), inflections
+     * (an array of inflections associated with the entity), comment_count (an integer representing the number of
+     * comments associated with the entity). The method also formats the gloss's date properties accordingly.
+     *
+     * @param Gloss|stdClass $gloss
+     * @param Collection $languages - an Eloquent collection of languages.
+     * @param array $inflections - an array of inflections with valid *gloss_id*.
+     * @param array $commentsById - an associative array with the entity ID as key, and the number of comments as value.
+     * @param bool $atomDate - whether to format dates using the ATOM format.
+     * @param LinkHelper $linker
+     * @return void
+     */
+    public function adaptGloss($gloss, Collection $languages = null, array $inflections = [], array $commentsById = [], 
+        bool $atomDate = false, LinkHelper $linker = null) 
     {
-        // Filter among the inflections, looking for references to the specified translation.
-        // The array is associative two-dimensional with the sentence fragment ID as the key, and an array containing
-        // the  inflections associated with the fragment.
-        $inflectionsForTranslation = array_filter($inflections, function ($i) use($translation) {
-            return $i[0]->translation_id === $translation->id;
-        });
-        $translation->inflections = count($inflectionsForTranslation) > 0 
-            ? $inflectionsForTranslation : null;
-        $translation->comment_count = isset($commentsById[$translation->id]) ? $commentsById[$translation->id] : 0;
+        if ($linker === null) {
+            $linker = new LinkHelper();
+        }
 
-        // Retrieve language reference to the specified translation
-        $translation->language = $languages->first(function ($l) use($translation) {
-            return $l->id === $translation->language_id;
+        $isGlossEntity = $gloss instanceof Gloss;
+        $separator = config('ed.gloss_translations_separator');
+
+        if ($isGlossEntity) {
+            $entity = $gloss;
+
+            $gloss = (object) $gloss->attributesToArray();
+
+            $gloss->account_name         = $entity->account->nickname;
+            $gloss->is_canon             = $entity->gloss_group_id ? $entity->gloss_group->is_canon : null;
+            $gloss->all_translations     = $entity->translations->implode('translation', $separator);
+            $gloss->word                 = $entity->word->word;
+            $gloss->normalized_word      = $entity->word->normalized_word;
+            $gloss->type                 = $entity->speech_id ? $entity->speech->name : null;
+            $gloss->gloss_group_id       = $entity->gloss_group_id ?: null;
+            $gloss->gloss_group_name     = $entity->gloss_group_id ? $entity->gloss_group->name : null;
+            $gloss->external_link_format = $entity->gloss_group_id ? $entity->gloss_group->external_link_format : null;
+            $gloss->translations         = $entity->translations->map(function ($t) {
+                return new Translation(['translation' => $t->translation]);
+            })->all();
+
+            unset(
+                $gloss->word_id, 
+                $gloss->is_deleted,
+                $gloss->child_gloss_id,
+                $gloss->updated_at,
+                $gloss->speech_id
+            );
+
+            if ($languages === null) {
+                $languages = new Collection([$entity->language]);
+            }
+
+        } else {
+            $gloss->all_translations = implode($separator, array_map(function ($t) {
+                return $t->translation;
+            }, $gloss->translations));
+        }
+
+        if (!empty($gloss->comments)) {
+            $markdownParser = new MarkdownParser(['>', '#']);
+            $gloss->comments = $markdownParser->text($gloss->comments);
+        }
+
+        $gloss->account_url = $linker->author($gloss->account_id, $gloss->account_name);
+
+        // Retrieve language reference to the specified gloss
+        $gloss->language = $languages->first(function ($l) use($gloss) {
+            return $l->id === $gloss->language_id;
         }); // <-- infer success
 
         // Convert dates
-        if (! ($translation->created_at instanceof Carbon)) {
-            $date = Carbon::parse($translation->created_at);
+        if (! ($gloss->created_at instanceof Carbon)) {
+            $date = Carbon::parse($gloss->created_at);
             
             if ($atomDate) {
-                $translation->created_at = $date->toAtomString();
+                $gloss->created_at = $date->toAtomString();
             } else {
-                $translation->created_at = $date;
+                $gloss->created_at = $date;
             }
         }
 
+        if (! property_exists($gloss, 'id')) {
+            $gloss->id = null;
+            return $gloss;
+        }
+
+        // Filter among the inflections, looking for references to the specified gloss.
+        // The array is associative two-dimensional with the sentence fragment ID as the key, and an array containing
+        // the  inflections associated with the fragment.
+        $inflectionsForGloss = array_filter($inflections, function ($i) use($gloss) {
+            return $i[0]->gloss_id === $gloss->id;
+        });
+        $gloss->inflections = count($inflectionsForGloss) > 0 
+            ? $inflectionsForGloss : null;
+        $gloss->comment_count = isset($commentsById[$gloss->id]) 
+            ? $commentsById[$gloss->id] : 0;
+
         // Create links upon the first element of each sentence fragment.
-        if ($translation->inflections !== null) {
-            foreach ($translation->inflections as $sentenceFragmentId => $inflectionsForFragment) {
+        if ($gloss->inflections !== null) {
+            foreach ($gloss->inflections as $sentenceFragmentId => $inflectionsForFragment) {
 
                 // The [0] restricts the URL to the first element in the array. 
                 if (! isset($inflectionsForFragment[0]->sentence_url)) {
@@ -231,73 +350,53 @@ class BookAdapter
             }
         }
 
-        return $translation;
+        return $gloss;
     }
 
     /**
-     * Estimates how relevant the specified translation object is based on the search term.
-     * @param $translation
+     * Estimates how relevant the specified gloss object is based on the search term.
+     * @param $gloss
      * @param $word
      */
-    private static function calculateRating($translation, string $word)
+    public static function calculateRating(\stdClass $gloss, string $word)
     {
         if (empty($word)) {
-            return PHP_INT_MIN;
+            return 1 << 31;
         }
 
         $rating = 0;
 
         // First, check if the gloss contains the search term by looking for its
         // position within the word property, albeit normalized.
-        $n = StringHelper::normalize($translation->word);
-        $pos = strpos($n, $word);
+        $ngw = StringHelper::normalize($gloss->word);
+        $nw = StringHelper::normalize($word);
+        $percent = 0;
+        similar_text($ngw, $nw, $percent);
+        $rating = $percent * 100000;
 
-        if ($pos !== false) {
-            // The "cleaner" the match, the better
-            $rating = 100000 + ($pos * -1) * 10;
-
-            if ($pos === 0 && $n == $word) {
-                $rating *= 2;
-            }
-        }
-
-        // If the previous check failed, check for the translations field. Statistically,
+        // If the previous check failed, check for the glosss field. Statistically,
         // this is the most common case.
-        if ($rating === 0) {
-            $n = StringHelper::normalize($translation->translation);
-            $pos = strpos($n, $word);
-
-            if ($pos !== false) {
-                $rating = 10000 + ($pos * -1) * 10;
-
-                if ($pos === 0 && $n == $word) {
-                    $rating *= 2;
-                }
+        $maxPercent = 0;
+        foreach ($gloss->translations as $t) {
+            $nt = StringHelper::normalize($t->translation);
+            similar_text($nt, $nw, $percent);
+            if ($percent > $maxPercent) {
+                $maxPercent = $percent;
             }
         }
-
-        // If the previous check failed, check within the comments field. Statistically,
-        // this is an uncommon match.
-        if ($rating === 0 && $translation->comments !== null) {
-            $n = StringHelper::normalize($translation->comments);
-            $pos = strpos($n, $word);
-
-            if ($pos !== false) {
-                $rating = 1000;
-            }
-        }
+        $rating = max($rating, $maxPercent * 100000);
 
         // Default rating for all other cases, probably matches by keyword.
         if ($rating === 0) {
             $rating = 100;
         }
 
-        // Bump all unverified translations to a trailing position
-        if (! $translation->is_canon) {
-            $rating = -110000 + $rating;
+        // Bump all unverified glosses to a trailing position
+        if (! $gloss->is_canon || $gloss->is_uncertain) {
+            $rating *= -1;
         }
 
-        $translation->rating = $rating;
+        $gloss->rating = $rating;
     }
 
     private static function assignColumnWidths(array $model, int $numberOfLanguages)

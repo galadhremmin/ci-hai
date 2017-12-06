@@ -3,6 +3,7 @@ import { connect } from 'react-redux';
 import { setSelection, beginNavigation } from '../actions';
 import classNames from 'classnames';
 import EDConfig from 'ed-config';
+import { smoothScrollIntoView } from 'ed-scrolling';
 import EDSearchItem from './search-item';
 import EDBookSection from './book-section';
 import EDComments from 'ed-components/comments';
@@ -68,10 +69,7 @@ class EDSearchResults extends React.Component {
         }
 
         const element = results[0];
-        window.setTimeout(() => element ? element.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-        }) : undefined, 500);
+        window.setTimeout(() => smoothScrollIntoView(element), 500);
     }
 
     gotoReference(normalizedWord, urlChanged) {
@@ -261,7 +259,7 @@ class EDSearchResults extends React.Component {
                         ) : undefined}
                         {this.props.bookData.sections.length > 0 && this.props.bookData.single ? <div>
                             <hr />
-                            <EDComments morph={'translation'} 
+                            <EDComments morph={'gloss'} 
                                         entityId={this.props.bookData.sections[0].glosses[0].id} 
                                         accountId={EDConfig.userId()} 
                                         enabled={true} />
