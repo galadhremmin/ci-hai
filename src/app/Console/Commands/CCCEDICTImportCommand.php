@@ -80,9 +80,15 @@ class CCCEDICTImportCommand extends Command
                 $traditional  = substr($line, 0, $pos0);
                 $simplified   = substr($line, $pos0 + 1, $pos1 - $pos0);
                 $pinyin       = substr($line, $pos2 + 1, $pos3 - $pos2 - 1);
-                $translations = array_map(function ($t) {
+
+                // Convert the array of translations (strings) into an array of Translation objects.
+                // The array_map function returns an associative array, which does not work in conjunction
+                // with array_splice, as it does not rebase the array after indices were removed. Therefore, the
+                // resulting associative array is passed into array_values, which yields an array compatible
+                // with the necessary functionality.
+                $translations = array_values(array_map(function ($t) {
                     return new Translation(['translation' => $t]);
-                }, explode('/', substr($line, $pos4 + 1, $pos5 - $pos4 - 1)));
+                }, array_unique(explode('/', substr($line, $pos4 + 1, $pos5 - $pos4 - 1)))));
 
                 $glosses[] = [
                     'traditional'  => $traditional, 
