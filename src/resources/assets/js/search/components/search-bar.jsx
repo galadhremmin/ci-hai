@@ -1,7 +1,7 @@
 import React from 'react';
 import { connect } from 'react-redux';
 import classNames from 'classnames';
-import EDConfig from 'ed-config';
+import EDAPI from 'ed-api';
 import EDLanguageSelect from 'ed-components/language-select';
 import { fetchResults, setSelection, advanceSelection } from '../actions';
 
@@ -19,11 +19,6 @@ class EDSearchBar extends React.Component {
     }
 
     componentDidMount() {
-        const languageNode = document.getElementById('ed-preloaded-languages');
-        this.setState({
-            languages: EDConfig.languages()
-        });
-
         window.addEventListener('keydown', this.keyhook);
     }
 
@@ -160,7 +155,7 @@ class EDSearchBar extends React.Component {
                             checked={this.state.includeOld}
                             onChange={this.onIncludeOldChange.bind(this)} /> Old sources
                     </label>
-                    {this.state.languages ? <EDLanguageSelect onChange={this.onLanguageChange.bind(this)} /> : ''}
+                    <EDLanguageSelect onChange={this.onLanguageChange.bind(this)} />
                 </div>
             </div>
         </form>);

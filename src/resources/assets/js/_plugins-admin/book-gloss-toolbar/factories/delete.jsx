@@ -1,6 +1,5 @@
 import React from 'react';
-import axios from 'axios';
-import EDConfig from 'ed-config';
+import EDAPI from 'ed-api';
 import { EDComponentFactory } from 'ed-components/dialog';
 import EDGlossSelect from 'ed-components/gloss-select';
 
@@ -29,7 +28,7 @@ class EDDeleteComponentFactory extends EDComponentFactory {
     }
 
     onSubmit(gloss) {
-        axios.delete(`/admin/gloss/${gloss.id}` + (this.replacementGloss ? `?replacement_id=${this.replacementGloss.id}` : ''))
+        EDAPI.delete(`/admin/gloss/${gloss.id}` + (this.replacementGloss ? `?replacement_id=${this.replacementGloss.id}` : ''))
             .then(this.done.bind(this, gloss), this.failed.bind(this, gloss))
     }
 }

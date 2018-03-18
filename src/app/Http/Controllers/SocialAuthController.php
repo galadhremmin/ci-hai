@@ -77,7 +77,7 @@ class SocialAuthController extends Controller
 
         $first = false;
         if (! $user) {
-            $nickname = self::getNextAvailableNickname($providerUser->getName() ?: 'Account');
+            $nickname = self::getNextAvailableNickname($providerUser->getName());
 
             $user = Account::create([
                 'email'          => $providerUser->getEmail(),
@@ -92,14 +92,19 @@ class SocialAuthController extends Controller
             // The first user ever created is assumed to have been created by an administrator
             // of the website, and thus assigned the role Administrator.
             if (Account::count() === 1) {
-                $user->addMembershipTo('Administrator');
+                $user->addMembershipTo('Administrators');
             }
 
-            $user->addMembershipTo('User');
+            $user->addMembershipTo('Users');
 
             $first = true;
         }
 
+        return $this->doLogin($request, $user, $first);
+    }
+
+    private function doLogin(Request $request, Account $user, bool $first = false)
+    {
         auth()->login($user);
 
         event(new AccountAuthenticated($user, $first));
@@ -125,7 +130,19 @@ class SocialAuthController extends Controller
         return $provider;
     }
 
-    private static function getNextAvailableNickname(string $nickname) {
+    public static function getNextAvailableNickname(string $nickname) 
+    {
+        if ($nickname === null || empty($nickname)) {
+            $nickname = config('ed.default_account_name');
+        }
+
+        // reduce maximum length to accomodate for space and numbering,
+        // in the event that a user with the same nickname already exists.
+        $maxLength = config('ed.max_nickname_length') - 4;
+        if (mb_strlen($nickname) > $maxLength) {
+            $nickname = mb_substr($nickname, 0, $maxLength);
+        }
+
         $i = 1;
         $tmp = $nickname;
 

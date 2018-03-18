@@ -1,12 +1,12 @@
-import axios from 'axios';
-import EDConfig from 'ed-config';
+import EDAPI from 'ed-api';
 import {
     REQUEST_RESULTS,
     REQUEST_NAVIGATION,
     RECEIVE_RESULTS,
     RECEIVE_NAVIGATION,
     ADVANCE_SELECTION,
-    SET_SELECTION
+    SET_SELECTION,
+    SET_LANGUAGE
 } from '../reducers';
 
 export function requestResults(wordSearch, reversed, languageId, includeOld) {
@@ -56,6 +56,17 @@ export function setSelection(index) {
     };
 }
 
+export function setLanguage(language) {
+    if (language && typeof language !== 'object') {
+        throw 'Unrecognised language ' + JSON.stringify(language) + '.';
+    }
+
+    return {
+        type: SET_LANGUAGE,
+        languageId: language ? language.id : undefined
+    };
+}
+
 export function fetchResults(word, reversed = false, language_id = 0, include_old = true) {
     if (!word || /^\s$/.test(word)) {
         return;
@@ -63,7 +74,7 @@ export function fetchResults(word, reversed = false, language_id = 0, include_ol
 
     return dispatch => {
         dispatch(requestResults(word, reversed, language_id, include_old));
-        axios.post(EDConfig.api('/book/find'), { 
+        EDAPI.post('book/find', { 
             word, 
             reversed, 
             language_id,
@@ -88,56 +99,64 @@ export function beginNavigation(word, normalizedWord, index, modifyState) {
         index = undefined;
     }
 
-    const uriEncodedWord = encodeURIComponent(normalizedWord || word);
-    const apiAddress = EDConfig.api('/book/translate');
-    const address = '/w/' + uriEncodedWord;
-    const capitalTitle = word.split(' ').map(w => w.substr(0, 1).toLocaleUpperCase() + w.substr(1)).join(' ');
-    const title = `${capitalTitle} - Parf Edhellen`;
-
-    // When navigating using the browser's back and forward buttons,
-    // the state needn't be modified.
-    if (modifyState) {
-        if (window.history.pushState !== undefined) {
-            window.history.pushState(null, title, address);
-        } else {
-            // If pushState isn't supported, do not even pretend to try to load react components for search results 
-            // for this deprecated browser.
-            window.setTimeout(() => window.location.href = address, 0);
-            return () => {};
-        }
-    }
-
-    // because most browsers doesn't change the document title when pushing state
-    document.title = title;
-
     return (dispatch, getState) => {
 
         // Retrieve language filter configuration
         const state = getState();
-        const language_id = state.languageId || undefined;
         const include_old = state.includeOld;
 
-        // Inform indirect listeners about the navigation
-        const event = new CustomEvent('ednavigate', { detail: { address, word, language_id } });
-        window.dispatchEvent(event);
+        const uriEncodedWord = encodeURIComponent(normalizedWord || word);
+        const capitalTitle = word.split(' ').map(w => w.substr(0, 1).toLocaleUpperCase() + w.substr(1)).join(' ');
+        const title = `${capitalTitle} - Parf Edhellen`;
 
-        dispatch(requestNavigation(word, normalizedWord || undefined, index));
+        const language_id = state.languageId || undefined;
+        const languagePromise = language_id 
+            ? EDAPI.languages(language_id)
+            : Promise.resolve(undefined);
 
-        axios.post(apiAddress, { 
-            word: normalizedWord || word, 
-            language_id,
-            inflections: true,
-            include_old
-        }).then(resp => {
-            dispatch(receiveNavigation(resp.data));
-
-            // Find elements which is requested to be deleted upon receiving the navigation commmand
-            const elementsToDelete = document.querySelectorAll('.ed-remove-when-navigating');
-            if (elementsToDelete.length > 0) {
-                for (let element of elementsToDelete) {
-                    element.parentNode.removeChild(element);
+        
+        languagePromise.then(language => {
+            
+            const address = `/w/${uriEncodedWord}` + (language ? `/${language.short_name}` : '');
+            // When navigating using the browser's back and forward buttons,
+            // the state needn't be modified.
+            if (modifyState) {
+                if (window.history.pushState !== undefined) {
+                    window.history.pushState(null, title, address);
+                } else {
+                    // If pushState isn't supported, do not even pretend to try to load react components for search results 
+                    // for this deprecated browser.
+                    window.setTimeout(() => window.location.href = address, 0);
+                    return () => {};
                 }
             }
+    
+            // because most browsers doesn't change the document title when pushing state
+            document.title = title;
+    
+            // Inform indirect listeners about the navigation
+            const event = new CustomEvent('ednavigate', { detail: { address, word, language_id } });
+            window.dispatchEvent(event);
+    
+            dispatch(requestNavigation(word, normalizedWord || undefined, index));
+    
+            EDAPI.post('book/translate', { 
+                word: normalizedWord || word, 
+                language_id,
+                inflections: true,
+                include_old
+            }).then(resp => {
+                dispatch(receiveNavigation(resp.data));
+    
+                // Find elements which is requested to be deleted upon receiving the navigation commmand
+                const elementsToDelete = document.querySelectorAll('.ed-remove-when-navigating');
+                if (elementsToDelete.length > 0) {
+                    for (let element of elementsToDelete) {
+                        element.parentNode.removeChild(element);
+                    }
+                }
+            });
+
         });
     };
 }

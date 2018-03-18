@@ -1,7 +1,5 @@
 import React from 'react';
-import axios from 'axios';
 import classNames from 'classnames';
-import EDConfig from 'ed-config';
 
 class EDTranslationSelect extends React.Component {
     constructor(props) {

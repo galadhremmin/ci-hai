@@ -2,8 +2,7 @@ import React from 'react';
 import classNames from 'classnames';
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
-import axios from 'axios';
-import EDConfig from 'ed-config';
+import EDAPI from 'ed-api';
 import { EDStatefulFormComponent } from 'ed-form';
 import { smoothScrollIntoView } from 'ed-scrolling';
 import { setSentenceData } from '../../actions/admin';
@@ -64,7 +63,7 @@ class EDSentenceForm extends EDStatefulFormComponent {
             contribution_id: this.props.contributionId || undefined
         };
 
-        axios.post(this.props.admin ? '/admin/sentence/validate'
+        EDAPI.post(this.props.admin ? '/admin/sentence/validate'
             : '/dashboard/contribution/substep-validate', payload)
             .then(request => this.onValidateSuccess(request, payload),
                   request => this.onValidateFail(request, payload));
@@ -86,13 +85,13 @@ class EDSentenceForm extends EDStatefulFormComponent {
         // Laravel returns 422 when the request fails validation. In the event that
         // we received an alternate status code, bail, as we do not know what that payload
         // contains.
-        if (request.response.status !== EDConfig.apiValidationErrorStatusCode) {
+        if (request.response.status !== EDAPI.apiValidationErrorStatusCode) {
             return; 
         }
 
         // Laravel returns a dictionary with the name of the component as the key.
         // Flatten the errors array, by aggregating all validation errors. 
-        const groupedErrors = request.response.data;
+        const groupedErrors = request.response.data.errors;
         const componentNames = Object.keys(groupedErrors);
         let aggregatedErrors = [];
 

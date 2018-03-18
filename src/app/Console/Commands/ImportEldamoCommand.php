@@ -8,6 +8,7 @@ use App\Repositories\GlossRepository;
 use App\Helpers\StringHelper;
 use App\Models\{
     Gloss, 
+    GlossDetail,
     GlossGroup,  
     Language, 
     Speech, 
@@ -53,14 +54,66 @@ class ImportEldamoCommand extends Command
 
         $json = trim(file_get_contents($path));
         $data = json_decode($json);
+
+        $json = null;
         unset($json); // free memory as the json payload can be huge!
 
-        if (! $data) {
+        if (! is_array($data)) {
             $this->error('Failed to process '.$path.'. Error: '.json_last_error_msg().' ('.json_last_error().').');
             $this->error('The JSON file must be saved using UTF-8 encoding (without BOM).');
             return;
         }
 
+        $noOfItems = count($data);
+        if ($noOfItems < 1) {
+            $this->error('Data source is empty.');
+        }
+
+        // check whether the array contains IDs, or definitions
+        $sum = array_sum(array_map(function ($item) {
+            return is_numeric($item) ? 1 : 0;
+        }, $data));
+
+        if ($sum === $noOfItems) {
+            $this->deleteDeprecated($data);
+        } else {
+            $this->import($data, $path);
+        }
+    }
+
+    private function getEldamo()
+    {
+        return GlossGroup::where('name', 'Eldamo')->firstOrFail();
+    }
+
+    private function deleteDeprecated(array $ids)
+    {
+        sort($ids);
+        
+        $eldamo = $this->getEldamo();
+
+        $glosses = $eldamo->glosses()
+            ->where('is_latest', 1)
+            ->select('id', 'external_id')
+            ->get();
+
+        $deleted = [];
+        foreach ($glosses as $gloss) {
+            if (in_array($gloss->external_id, $ids)) {
+                continue;
+            }
+
+            $this->info('Deleting deprecated '.$gloss->external_id);
+
+            // $this->_glossRepository->deleteGlossWithId($gloss->id);
+            $deleted[] = $gloss->id;
+        }
+
+        $this->info('Deleted '.count($deleted).' deprecated glosses.');
+    }
+
+    private function import(array $data, string $path)
+    {
         $speechMap = [
             '?'        => '?',
             'adj'      => 'adjective',
@@ -136,7 +189,6 @@ class ImportEldamoCommand extends Command
 
             $speechMap[$key] = $speech->id;
         }
-
 
         // Establish a language mapping between Eldamo and Parf Edhellen. This map is based on
         // Eldamo's XSD (xs:simpleType name="language-type") for v0.5.5
@@ -220,7 +272,7 @@ class ImportEldamoCommand extends Command
         }
 
         // Find the Eldamo gloss group
-        $eldamo = GlossGroup::where('name', 'Eldamo')->firstOrFail();
+        $eldamo = $this->getEldamo();
 
         $this->line('Data source: '.$path);
         $this->line('Eldamo ID: '.$eldamo->id.'.');
@@ -232,9 +284,15 @@ class ImportEldamoCommand extends Command
             ->firstOrFail();
 
         $c = 1;
+        $ignored = [];
         foreach ($data as $t) {
-            if (count($t->gloss) < 1 || ($t->gloss[0] == $t->word && substr($t->speech, -4) !== 'name')) {
-                $this->line('Ignoring due to lacking gloss: '.$t->word.' '.$t->id);
+            $noOfTranslations = count($t->translations);
+            if ($noOfTranslations === 0 && (! empty($t->notes) || count($t->glossDetails) > 0)) {
+                $t->translations[] = $t->word;
+            }
+            
+            if ($noOfTranslations < 1) {
+                $ignored[] = $t;
                 continue;
             }
 
@@ -253,14 +311,25 @@ class ImportEldamoCommand extends Command
                 $ot->account_id = $existing->account_id;
             }
 
-            $word = self::removeNumbers($t->word);
-            $sense = self::removeNumbers($t->category ?: $t->gloss[0]);
-            $keywords = []; // are automatically populated, anyway.
+            $sense = $t->translations[0];
+            $word = $t->word;
+
+            $keywords = array_keys((array) $t->variations); // are automatically populated, anyway.
             $translations = array_map(function ($v) {
                 return new Translation(['translation' => $v]);
             }, array_unique(array_map(function ($v) {
-                return StringHelper::toLower(self::removeNumbers($v));
-            }, $t->gloss)));
+                return self::removeMark($v);
+            }, $t->translations)));
+            $details = array_map(function ($d) use($ot) {
+                return new GlossDetail([
+                    'category' => $d->category,
+                    'text' => $d->text,
+                    'account_id' => $ot->account_id
+                ]);
+            }, $t->glossDetails);
+            for ($i = 1; $i <= count($details); $i += 1) {
+                $details[$i - 1]->order = $i * 10;
+            }
 
             $ot->is_uncertain = $t->mark === '?' ||
                                 $t->mark === '*' ||
@@ -270,12 +339,11 @@ class ImportEldamoCommand extends Command
             $ot->is_rejected  = $t->mark === '-';
             $ot->is_deleted   = 0;
             
-            $ot->source       = implode('; ', $t->sources);
+            $ot->source       = implode('; ', $t->exactSources);
 
             $ot->language_id  = $languageMap[$t->language] ?: null;
             $ot->speech_id    = $speechMap[$t->speech] ?: null;
-
-            self::createComments($ot, $t, $keywords);
+            $ot->comments     = $t->notes;
 
             if (! $ot->language_id) {
                 $this->line($word.': ignoring '.$t->id.'.');
@@ -284,7 +352,7 @@ class ImportEldamoCommand extends Command
 
             try {
                 $this->line($c.' '.$t->language.' '.$t->word.': '.($found ? $ot->id : 'new'));
-                $t = $this->_glossRepository->saveGloss($word, $sense, $ot, $translations, $keywords, false);
+                $t = $this->_glossRepository->saveGloss($word, $sense, $ot, $translations, $keywords, $details, false);
                 $this->line('     -> '.$t->id);
             } catch (\Exception $ex) {
                 $this->error('Failed due to an exception!');
@@ -295,142 +363,25 @@ class ImportEldamoCommand extends Command
 
             $c += 1;
         }
+
+        foreach ($ignored as $t) {
+            $this->line("- ".$t->id.": ".$t->word);
+        }
+        $this->line(count($ignored). ' ignored.');
     }
 
-    private static function createComments(Gloss $ot, \stdClass $t, array $keywords)
+    private static function removeMark(string $word)
     {
-        $comments = [];
-
-        if (! empty($t->notes)) {
-            $comments[] = $t->notes;
+        if (mb_strlen($word) < 1) {
+            return $word;
         }
 
-        if (count($t->variations)) {
-            $variations = array_filter($t->variations, function ($v) use($t) {
-                return StringHelper::toLower($v->word) !== StringHelper::toLower($t->word);
-            });
-
-            if (! empty($variations)) {
-                $comments[] = 'Variations of the word: '.implode(', ', array_map(function ($c) use($t) {
-                    return '**'.$c->word.'**';
-                }, $t->variations)).'.';
-            }
+        if ($word[0] === '*' ||
+            $word[0] === '#' ||
+            $word[0] === '?') {
+            return substr($word, 1); 
         }
 
-        if (count($t->elements)) {
-            $comments[] = '   ';
-            $comments[] = '*Elements*';
-            $comments[] = '   '; // necessary before tables.
-
-            $table = [
-                'Word|Gloss|Source',
-                '----|-----|------'
-            ];
-
-            // TODO: this is a bit precarious in the original data file -- apparently there are situations where there
-            //       are multiple references to the same word, resulting in doublettes. This code is a temporary solution
-            //       for cleaning those up:
-            for ($i = 0; $i < count($t->elements); $i += 1) {
-                $element = $t->elements[$i];
-
-                $matches = array_filter($t->elements, function ($v, $k) use($element) {
-                    
-                    // same object -- ignore that one (obv.)
-                    if ($element === $v) {
-                        return false;
-                    }
-
-                    return $element->word === $v->word &&
-                        $element->gloss === $v->gloss;
-                }, ARRAY_FILTER_USE_BOTH);
-
-                foreach ($matches as $match) {
-                    $element->source = empty($element->source)
-                        ? $match->source : '|'.$match->source;
-
-                    $pos = array_search($match, $t->elements);
-                    if ($pos !== false) {
-                        array_splice($t->elements, $pos, 1);
-                    }
-                }
-
-                $i -= min($i, count($matches));
-            }
-
-            $previous = null;
-            foreach ($t->elements as $element) {
-                if ($previous == $element->word) {
-                    continue;
-                }
-
-                $table[] = '[['.self::removeNumbers($element->word).']]|'.(! empty($element->gloss) ? $element->gloss : '-').'|'.
-                    ($element->source ? implode('; ', explode('|', $element->source)) : '-');
-
-                $previous = $element->word;
-            }
-
-            $comments[] = implode("\n", $table);
-        }
-
-        if (count($t->inflections)) {
-            $comments[] = '   ';
-            $comments[] = '*Imported inflections*';
-            $comments[] = '   '; // necessary before tables.
-
-            $table = [
-                'Word|Form|Gloss|Source',
-                '----|----|-----|------'
-            ];
-
-            foreach ($t->inflections as $inflection) {
-                $table[] = self::removeNumbers($inflection->word).'|'.$inflection->form.'|'.
-                    (! empty($inflection->gloss) ? $inflection->gloss : '-').'|'.
-                    implode('; ', explode('|', $inflection->source));
-            }
-
-            $comments[] = implode("\n", $table);
-        }
-
-        if (count($t->elementIn)) {
-            $comments[] = '   ';
-            $comments[] = 'Element in: '.implode(', ',
-                array_map(function ($c) {
-                    return ($c->language ? '_'.strtoupper($c->language).'._ ' : '').'[['.self::removeNumbers($c->word).']]'.
-                    (empty($c->gloss) ? ' “'.$c->gloss.'”' : '');
-                }, $t->elementIn)
-            );
-        }
-
-        /* Temporarily disabled because the data source "gloss" is erroneous at this time
-        if (count($t->related)) {
-            $comments[] = '   ';
-            $comments[] = '*Related*';
-
-            $comments = array_merge($comments,
-                array_map(function ($c) use($t) {
-                    return '* '.($c->language ? '_'.strtoupper($t->language).'._ ' : '').'[['.$c->word.']] '.
-                        (! empty($c->gloss) ? '“'.$c->gloss.'” ' : '').(! empty($c->notes) ? $c->notes : '');
-                }, $t->related)
-            );
-        }
-
-        if (count($t->cognates)) {
-            $comments[] = '   ';
-            $comments[] = '*Cognates*';
-
-            $comments = array_merge($comments,
-                array_map(function ($c) {
-                    return '* [['.$c->word.(empty($c->gloss) ? ']] “'.$c->gloss.'”' : '');
-                }, $t->cognates)
-            );
-        }
-        */
-
-        $ot->comments = implode("   \n", $comments);
-    }
-
-    private static function removeNumbers($word)
-    {
-        return preg_replace('/[¹²³]$/u', '', $word);
+        return $word;
     }
 }

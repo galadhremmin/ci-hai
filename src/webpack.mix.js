@@ -24,6 +24,7 @@ mix.webpackConfig({
             'ed-components/language-select': 'elfdict/components/language-select.jsx',
             'ed-components/gloss-select': 'elfdict/components/gloss-select.jsx',
 
+            'ed-api': 'elfdict/api.js',
             'ed-config': 'elfdict/config.js',
             'ed-form': 'elfdict/form.js',
             'ed-promise': 'elfdict/promise.js',
@@ -37,6 +38,7 @@ mix.webpackConfig({
 const outputDir = `public/v${process.env.ED_VERSION}`;
 
 mix.extract([
+    'core-js/es6/map', 'core-js/es6/set',
     'react', 'react-dom', 'react-router-dom',
     'react-redux', 'redux', 'redux-thunk',
     'react-autosuggest', 
@@ -119,8 +121,11 @@ mix.js([
     'resources/assets/js/system-errors/index.jsx'
 ], `${outputDir}/js/system-errors-admin.js`);
 
+// .sourceMaps();
+
 mix.sass('resources/assets/sass/app.scss', `${outputDir}/css`);
 mix.sass('resources/assets/sass/app.flashcard.scss', `${outputDir}/css`);
+mix.sass('resources/assets/sass/app.sentence.scss', `${outputDir}/css`);
 mix.sass('resources/assets/sass/app.sentences.scss', `${outputDir}/css`);
 mix.sass('resources/assets/sass/app.timeline.scss', `${outputDir}/css`);
 mix.sass('resources/assets/sass/app.discuss.scss', `${outputDir}/css`);

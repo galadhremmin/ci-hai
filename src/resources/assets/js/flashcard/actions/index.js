@@ -4,8 +4,7 @@ import {
     ED_TEST_CARD,
     ED_RECEIVE_GLOSS
 } from '../reducers';
-import axios from 'axios';
-import EDConfig from 'ed-config';
+import EDAPI from 'ed-api';
 import { deferredResolve } from 'ed-promise';
 
 export const getCard = (flashcardId) => (dispatch, getState) => {
@@ -13,7 +12,7 @@ export const getCard = (flashcardId) => (dispatch, getState) => {
         type: ED_REQUEST_CARD
     });
 
-    deferredResolve(axios.post('/dashboard/flashcard/card', {
+    deferredResolve(EDAPI.post('/dashboard/flashcard/card', {
       id: flashcardId,
       not: getState().previous_list
     }), 800).then(resp => {
@@ -29,7 +28,7 @@ export const testCard = (flashcardId, option) => (dispatch, getState) => {
         type: ED_TEST_CARD
     });
 
-    deferredResolve(axios.post('/dashboard/flashcard/test', {
+    deferredResolve(EDAPI.post('/dashboard/flashcard/test', {
         flashcard_id: flashcardId,
         translation_id: getState().translation_id,
         translation: option

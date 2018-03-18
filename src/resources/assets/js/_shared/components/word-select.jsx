@@ -1,7 +1,6 @@
 import React from 'react';
-import axios from 'axios';
+import EDAPI from 'ed-api';
 import classNames from 'classnames';
-import EDConfig from 'ed-config';
 import Autosuggest from 'react-autosuggest';
 
 class EDWordSelect extends React.Component {
@@ -110,8 +109,8 @@ class EDWordSelect extends React.Component {
         }
     }
 
-    getSuggestionValue(suggestion) {
-        return suggestion.word;
+    getSuggestionValue(suggestion) { 
+        return suggestion._word ? suggestion._word : suggestion.word;
     }
 
     renderInput(inputProps) {
@@ -163,10 +162,11 @@ class EDWordSelect extends React.Component {
     onSuggestionSelect(ev, data) {
         ev.preventDefault();
 
-        let suggestion = data.suggestion._isNew === true && data.suggestion.hasOwnProperty('_word')
-            ? { id: 0, word: data.suggestion._word }
-            : data.suggestion;
-
+        const suggestion = {
+            id: data.suggestion.id,
+            word: this.getSuggestionValue(data.suggestion)
+        };
+        
         const value = this.isMultiple()
             ? [ ...(this.state.value), suggestion ]
             : suggestion;
@@ -193,7 +193,7 @@ class EDWordSelect extends React.Component {
             this.loading = true;
 
             // Retrieve suggestions for the specified word.
-            axios.post(EDConfig.api('book/word/find'), {
+            EDAPI.post('book/word/find', {
                 word,
                 max: 10
             }).then(resp => {
@@ -202,7 +202,7 @@ class EDWordSelect extends React.Component {
                 // If the _canCreateNew_ property is set to true, and none of the suggestions is a direct match to the
                 // search query, present the author with the option to add a new word.
                 if (this.props.canCreateNew && ! suggestions.some(s => s.word === word)) {
-                    suggestions = [ { id: 0, word: `Add word "${word}"`, _isNew: true, _word: word } , ...suggestions];
+                    suggestions = [ { id: 0, word: `Add word "${word}"`, _word: word } , ...suggestions];
                 }
 
                 this.setState({

@@ -72,4 +72,23 @@ class LinkHelper
 
         return $url;
     }
+
+    public function forumPost(int $postId, string $subject = '') 
+    {
+        if (empty($subject)) {
+            return route('discuss.show', ['id' => $postId]);
+        }
+
+        throw new \Exception('Not implemented.');
+    }
+
+    public function mailCancellation(string $cancellationToken)
+    {
+        return route('mail-setting.cancellation', ['token' => $cancellationToken]);
+    }
+
+    public function contribution(int $contributionId)
+    {
+        return route('contribution.show', ['id' => $contributionId]);
+    }
 }

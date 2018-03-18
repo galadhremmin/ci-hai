@@ -71,6 +71,7 @@ class GlossController extends Controller
             ->with('translations', 'account', 'sense.word', 'speech', 'keywords', 'word')
             ->select('glosses.*')
             ->paginate(30);
+
         return view('gloss.list', [
             'language' => $language,
             'glosses' => $glosses
@@ -173,6 +174,6 @@ class GlossController extends Controller
         $map = $this->mapGloss($gloss, $request);
         extract($map);
 
-        return $this->_glossRepository->saveGloss($word, $sense, $gloss, $translations, $keywords);
+        return $this->_glossRepository->saveGloss($word, $sense, $gloss, $translations, $keywords, $details);
     }
 }

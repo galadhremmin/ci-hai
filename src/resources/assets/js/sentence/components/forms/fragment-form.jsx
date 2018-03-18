@@ -1,10 +1,9 @@
 import React from 'react';
 import classNames from 'classnames';
-import axios from 'axios';
+import EDAPI from 'ed-api';
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
 import { requestSuggestions, setFragments, setFragmentData, setTengwar } from '../../actions/admin';
-import EDConfig from 'ed-config';
 import { EDStatefulFormComponent } from 'ed-form';
 import { smoothScrollIntoView } from 'ed-scrolling';
 import EDMarkdownEditor from 'ed-components/markdown-editor';
@@ -54,8 +53,17 @@ class EDFragmentForm extends EDStatefulFormComponent {
             phrase,
             editIndex: -1,
             editIsExcluded: false,
-            erroneousIndexes: []
+            erroneousIndexes: [],
+            language: null
         };
+    }
+
+    componentWillMount() {
+        EDAPI.languages(this.props.language_id || 0).then(language => {
+            this.setState({
+                language
+            });
+        });
     }
 
     createFragment(fragment, type, doTranscribe) {
@@ -63,7 +71,7 @@ class EDFragmentForm extends EDStatefulFormComponent {
 
         if (doTranscribe) {
             // retrieve the mode associated with the language currently selected. 
-            const language = EDConfig.findLanguage(this.props.language_id);
+            const language = this.state.language;
             let mode = language.tengwar_mode;
 
             // Transcribe interpunctuations automatically. The _quenya_ setting
@@ -107,7 +115,7 @@ class EDFragmentForm extends EDStatefulFormComponent {
             
             // In the event that the fragment is already associated with a gloss, retrieve it.
             if (data.gloss_id) {
-                promise = axios.get(EDConfig.api(`book/translate/${data.gloss_id}`))
+                promise = EDAPI.get(`book/translate/${data.gloss_id}`)
                     .then(resp => { 
                         if (!resp.data.sections || !resp.data.sections.length ||
                             !resp.data.sections[0].glosses || resp.data.sections[0].glosses.length < 1) {
@@ -179,7 +187,7 @@ class EDFragmentForm extends EDStatefulFormComponent {
                 contribution_id: this.props.contributionId || undefined
             };
 
-        axios.post(this.props.admin ? '/admin/sentence/validate-fragment' 
+        EDAPI.post(this.props.admin ? '/admin/sentence/validate-fragment' 
             : '/dashboard/contribution/substep-validate', payload)
             .then(this.onFragmentsValid.bind(this), this.onFragmentsInvalid.bind(this));
     }
@@ -404,7 +412,7 @@ class EDFragmentForm extends EDStatefulFormComponent {
             erroneousIndexes: []
         });
 
-        axios.post(this.props.admin ? '/admin/sentence/parse-fragment/tengwar'
+        EDAPI.post(this.props.admin ? '/admin/sentence/parse-fragment/tengwar'
             : '/dashboard/contribution/sentence/parse-fragment/tengwar', 
             { fragments: this.props.fragments }).then(response => {
             this.props.dispatch(setTengwar(response.data));
@@ -413,16 +421,18 @@ class EDFragmentForm extends EDStatefulFormComponent {
     }
 
     onFragmentsInvalid(result) {
-        if (result.response.status !== EDConfig.apiValidationErrorStatusCode) {
+        if (result.response.status !== EDAPI.apiValidationErrorStatusCode) {
             return ; // unknown error code
         }
 
+        const errorList = result.response.data.errors;
+
         let errors = [];
         let erroneousIndexes = [];
-        for (let erroneousElementName in result.response.data) {
+        for (let erroneousElementName in errorList) {
             const parts = /^fragments.([0-9]+).([a-zA-Z0-9_]+)/.exec(erroneousElementName);
             if (parts === null) {
-                errors = [...errors, ...result.response.data[erroneousElementName]];
+                errors = [...errors, ...errorList[erroneousElementName]];
                 continue;
             }
 
@@ -483,7 +493,9 @@ class EDFragmentForm extends EDStatefulFormComponent {
     }
  
     render() {
-        const language = EDConfig.findLanguage(this.props.language_id);
+        if (! this.state.language) {
+            return null;
+        }
 
         return <form onSubmit={this.onSubmit.bind(this)}>
             <p>
@@ -538,7 +550,7 @@ class EDFragmentForm extends EDStatefulFormComponent {
                         </div> : ''}
                         <div className="form-group">
                             <label htmlFor="ed-sentence-fragment-tengwar" className="control-label">Tengwar</label>
-                            <EDTengwarInput componentId="ed-sentence-fragment-tengwar" tengwarMode={language.tengwar_mode}
+                            <EDTengwarInput componentId="ed-sentence-fragment-tengwar" tengwarMode={this.state.language.tengwar_mode}
                                 ref={input => this.tengwarInput = input} />
                         </div>
                         {! this.state.editIsExcluded ? <div>

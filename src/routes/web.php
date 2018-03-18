@@ -39,13 +39,17 @@ Route::get('/phrases/{langId}-{langName}/{sentId}-{sentName}', [ 'uses' => 'Sent
     ->name('sentence.public.sentence');
 
 // Dictionary
-Route::get('/w/{word}',               [ 'uses' => 'BookController@pageForWord' ]);
+Route::get('/w/{word}/{language?}',   [ 'uses' => 'BookController@pageForWord' ]);
 Route::get('/wt/{id}',                [ 'uses' => 'BookController@pageForGlossId' ])
     ->where([ 'id' => '[0-9]+' ])->name('gloss.ref');
     Route::get('/wt/{id}/latest',     [ 'uses' => 'BookController@redirectToLatest' ])
         ->where([ 'id' => '[0-9]+' ])->name('gloss.ref.latest');
 Route::get('/wt/{id}/versions',       [ 'uses' => 'BookController@versions' ])
     ->where([ 'id' => '[0-9]+' ])->name('gloss.ref.version');
+
+// Mail cancellation
+Route::get('/stop-notification/{token}', ['uses' => 'Resources\\MailSettingController@handleCancellationToken'])
+    ->name('mail-setting.cancellation');
 
 // User accounts
 Route::group([ 'middleware' => 'auth' ], function () {
@@ -100,6 +104,11 @@ Route::group([
     'prefix'     => 'dashboard', 
     'middleware' => ['auth']
 ], function () {
+
+    // Mail settings
+    Route::resource('mail-setting', 'MailSettingController', [
+        'only' => ['index', 'create', 'store']
+    ]);
 
     // Discuss
     Route::resource('discuss', 'DiscussController', [
@@ -174,7 +183,9 @@ Route::group([
         'prefix'    => 'api/v2'
     ], function () {
 
-    Route::get('book/translate/{glossId}', [ 'uses' => 'BookApiController@get' ]);
+    Route::get('book/languages',           [ 'uses' => 'BookApiController@getLanguages' ]);
+    Route::get('book/translate/{glossId}', [ 'uses' => 'BookApiController@get' ])
+        ->where([ 'glossId' => '[0-9]+' ]);
     Route::post('book/translate',          [ 'uses' => 'BookApiController@translate' ]);
     Route::post('book/suggest',            [ 'uses' => 'BookApiController@suggest' ]);
     Route::post('book/find',               [ 'uses' => 'BookApiController@find' ]);
@@ -210,8 +221,10 @@ Route::group([
         'edit', 'store', 'update', 'destroy'
     ]]);
 
-    Route::post('forum/like/{id}',   [ 'uses' => 'ForumApiController@storeLike'   ]);
-    Route::delete('forum/like/{id}', [ 'uses' => 'ForumApiController@destroyLike' ]);
+    Route::post('forum/like/{id}',   [ 'uses' => 'ForumApiController@storeLike'   ])
+        ->where([ 'id' => '[0-9]+' ]);
+    Route::delete('forum/like/{id}', [ 'uses' => 'ForumApiController@destroyLike' ])
+        ->where([ 'id' => '[0-9]+' ]);
 
     Route::get('book/word/{id}',  [ 'uses' => 'BookApiController@getWord'   ]);
     Route::post('book/word/find', [ 'uses' => 'BookApiController@findWord'  ]);

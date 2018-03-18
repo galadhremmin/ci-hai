@@ -1,7 +1,6 @@
 import React from 'react';
-import axios from 'axios';
+import EDAPI from 'ed-api';
 import classNames from 'classnames';
-import EDConfig from 'ed-config';
 import { Parser as HtmlToReactParser } from 'html-to-react';
 
 const MDMarkdownEditTab = 0;
@@ -85,7 +84,7 @@ class EDMarkdownEditor extends React.Component {
             this.markupContainer.style.minHeight = boundingRect.height + 'px';
 
             // Let the server parse the markdown
-            axios.post(EDConfig.api('/utility/markdown'), { markdown: this.state.value })
+            EDAPI.post('utility/markdown', { markdown: this.state.value })
                 .then(this.applyHtml.bind(this));
         }
 

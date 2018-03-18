@@ -38,9 +38,10 @@ class GlossContributionController extends Controller implements IContributionCon
      * HTTP GET. Shows a gloss contribution.
      *
      * @param Contribution $contribution
+     * @param bool $admin is an administrator viewing other's contributions?
      * @return \Illuminate\View\View|\Illuminate\Contracts\View\Factory
      */
-    public function show(Contribution $contribution)
+    public function show(Contribution $contribution, bool $admin)
     {
         $keywords = json_decode($contribution->keywords);
 
@@ -65,13 +66,15 @@ class GlossContributionController extends Controller implements IContributionCon
         // Hack for assigning to the relation _translations_ without saving them to the database.
         $gloss->setRelation('translations', new Collection($translations));
         $gloss->setRelation('word', new Word(['word' => $contribution->word]));
+        $gloss->setRelation('gloss_details', new Collection());
 
         $glossData = $this->_bookAdapter->adaptGlosses($glosses);
         
         return view('contribution.gloss.show', $glossData + [
             'review'      => $contribution,
             'keywords'    => $keywords,
-            'parentGloss' => $parentGloss
+            'parentGloss' => $parentGloss,
+            'admin'       => $admin
         ]);
     }
 

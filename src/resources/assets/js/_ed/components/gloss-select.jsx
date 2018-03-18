@@ -1,7 +1,6 @@
 import React from 'react';
-import axios from 'axios';
+import EDAPI from 'ed-api';
 import classNames from 'classnames';
-import EDConfig from 'ed-config';
 import Autosuggest from 'react-autosuggest';
 
 const EDLanguageProtocolQualifier = ' lang:';
@@ -96,6 +95,7 @@ class EDGlossSelect extends React.Component {
     onSuggestionsFetchRequest(data) {
         var languageId = this.props.languageId;
         let word = String(data.value || '').toLocaleLowerCase();
+        let languagePromise = null;
 
         // is the lang: protocol used to switch languages?
         if (word.indexOf(EDLanguageProtocolQualifier) > 0) {
@@ -106,13 +106,19 @@ class EDGlossSelect extends React.Component {
 
                 // override the language of choice -- no optimization (hash tables etc.) is deemed necessary because
                 // this is an admin & power-user device.
-                const language = EDConfig.findLanguage(match[1], 'name', (a, b) => a.toLocaleLowerCase() === b);
-                if (language) {
-                    languageId = language.id;
-                }
+                languagePromise = EDAPI.languages(match[1], 'name', (a, b) => a.toLocaleLowerCase() === b)
+                    .then(language => language ? language.id : undefined);
             }
         }
 
+        if (languagePromise === null) {
+            languagePromise = Promise.resolve(languageId);
+        }
+
+        languagePromise.then(languageId => this.fetchSuggestions(word, languageId));
+    }
+
+    fetchSuggestions(word, languageId) {
         // already fetching suggestions?
         if (this.loading || /^\s*$/.test(word) || this.state.suggestionsFor === word) {
             return;
@@ -129,7 +135,7 @@ class EDGlossSelect extends React.Component {
             this.loading = true;
 
             // Retrieve suggestions for the specified word.
-            axios.post(EDConfig.api('book/suggest'), {
+            EDAPI.post('book/suggest', {
                 words: [ word ], 
                 language_id: languageId,
                 inexact: true

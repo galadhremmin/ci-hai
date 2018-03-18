@@ -179,9 +179,9 @@ Breadcrumbs::register('contribution.edit', function ($breadcrumbs, int $id)
     $breadcrumbs->push('Change contribution', route('contribution.edit', ['id' => $id]));
 });
 
-Breadcrumbs::register('contribution.show', function ($breadcrumbs, int $id)
+Breadcrumbs::register('contribution.show', function ($breadcrumbs, int $id, bool $admin = false)
 {
-    $breadcrumbs->parent('contribution.index');
+    $breadcrumbs->parent($admin ? 'contribution.list' : 'contribution.index');
     $breadcrumbs->push('Contribution #'.$id, route('contribution.show', ['id' => $id]));
 });
 
@@ -279,6 +279,15 @@ Breadcrumbs::register('account.by-role', function ($breadcrumbs, App\Models\Role
 {
     $breadcrumbs->parent('account.index');
     $breadcrumbs->push('Accounts in '.$role->name, route('account.by-role', ['id' => $role->id]));
+});
+
+// //////////////////////////////////////////////////////////////////////////////////////////////
+// Dashboard > Mail settings
+
+Breadcrumbs::register('mail-setting.index', function ($breadcrumbs)
+{
+    $breadcrumbs->parent('dashboard');
+    $breadcrumbs->push('Mail notifications', route('mail-setting.index'));
 });
 
 

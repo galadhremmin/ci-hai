@@ -109,6 +109,14 @@ class MarkdownParser extends \Parsedown
         // the start and end tags.
         $wordLength = strlen($tagBegin.$tagBegin . $word . $tagEnd.$tagEnd);
 
+        // Extract language, if present
+        $pos = strpos($word, '|');
+        $language = '';
+        if ($pos !== false) {
+            $language = substr($word, 0, $pos);
+            $word = substr($word, $pos + 1);
+        }
+
         // escape/encode special characters as their HTML equivalent
         $word = htmlspecialchars($word, ENT_QUOTES | ENT_HTML5);
 
@@ -116,18 +124,24 @@ class MarkdownParser extends \Parsedown
         $word = str_replace(['¹', '²', '³'], '', $word);
         $normalizedWord = StringHelper::normalize($word);
 
+        $attrs = [
+            'href' => '/w/' . urlencode($normalizedWord),
+            'title' => 'Navigate to '.$word.'.',
+            'class' => 'ed-word-reference',
+            'data-word' => $normalizedWord
+        ];
+        if (! empty($language)) {
+            $attrs['href'] .= '/'.$language;
+            $attrs['data-language-short-name'] = $language;
+        }
+
         return [
             'extent' => $wordLength,
             'element' => [
                 'name' => 'a',
                 'handler' => 'line',
                 'text' => $word,
-                'attributes' => [
-                    'href' => '/w/' . urlencode($normalizedWord),
-                    'title' => 'Navigate to '.$word.'.',
-                    'class' => 'ed-word-reference',
-                    'data-word' => $normalizedWord
-                ]
+                'attributes' => $attrs
             ]
         ];
     }
@@ -191,5 +205,42 @@ class MarkdownParser extends \Parsedown
                 ]
             ]
         ];
+    }
+
+    protected function inlineLink($Excerpt)
+    {
+        $link = parent::inlineLink($Excerpt);
+        return $this->shortenUri($link);
+    }
+
+    protected function inlineUrl($Excerpt)
+    {
+        $link = parent::inlineUrl($Excerpt);
+        return $this->shortenUri($link);
+    }
+
+    private function shortenUri($link)
+    {
+        if (! is_array($link)) {
+            return;
+        }
+        
+        $attrs =& $link['element']['attributes'];
+        $uri   = $attrs['href'];
+        $text  = $link['element']['text'];
+        if (! filter_var($uri, FILTER_VALIDATE_URL) ||
+            ! filter_var($text, FILTER_VALIDATE_URL)) {
+            return $link;
+        }
+
+        $parts = parse_url($uri);
+        if (! isset($parts['host']) || empty($parts['host'])) {
+            return $link;
+        }
+
+        $link['element']['text'] = $parts['host'];
+        $attrs['title'] = 'Goes to: '.$uri;
+        
+        return $link;
     }
 }

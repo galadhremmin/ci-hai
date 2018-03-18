@@ -187,15 +187,12 @@ class ForumApiController extends Controller
 
     public function show(Request $request, int $id)
     {
-        $post = ForumPost::findOrFail($id);
-
-        $resolver = $this->_contextFactory->create($post->forum_thread->entity_type);
-        if (! $resolver) {
-            abort(400, 'A context cannot be resolved for the specified entity type "'.$post->forum_thread->entity_type.'".');
+        $post = ForumPost::where('id', $id)->select('forum_thread_id')->get();
+        if ($post->count() < 1) {
+            abort(404, 'The post you are looking for does not exist');
         }
 
-        $url = $resolver->resolve($post->forum_thread->entity).'?forum_post_id='.$id;
-        return redirect($url);
+        return redirect()->route('discuss.show', ['id' => $post->first()->forum_thread_id]);
     }
 
     /**
@@ -325,7 +322,7 @@ class ForumApiController extends Controller
         $thread = $post->forum_thread;
 
         // reassign the 'latest' contributor to the thread
-        if (! $thread->number_of_posts) {
+        if ($thread->number_of_posts < 1) {
             $thread->account_id = null;
         } else {
             $lastAccount = $thread->forum_posts()->where([
@@ -335,7 +332,7 @@ class ForumApiController extends Controller
             ->orderBy('id', 'desc')
             ->first();
 
-            $thread->account_id = $lastAccount ? $lastAccount->id : null;
+            $thread->account_id = $lastAccount ? $lastAccount->account_id : null;
         }
 
         // reduce number of likes and post counter

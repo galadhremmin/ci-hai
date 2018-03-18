@@ -22,6 +22,12 @@
                 Your profile
               </a>
             </li>
+              <li>
+                <a href="{{ route('mail-setting.index') }}">
+                  <span class="glyphicon glyphicon-bell"></span>
+                  Mail notifications
+                </a>
+              </li>
             @if ($user->isAdministrator())
               @if ($incognito)
               <li>
@@ -102,7 +108,10 @@
           <hr>
           <ul>
             <li><a href="{{ route('account.index') }}">Accounts</a></li>
-            <li><a href="{{ route('system-error.index') }}">System errors</a></li>
+            <li>
+              <a href="{{ route('system-error.index') }}">System errors</a> 
+              <span class="label label-info">{{ $numberOfErrors }}</span>
+            </li>
           </ul>
         </div>
       </div>

@@ -2,9 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 import { createStore, applyMiddleware } from 'redux';
-import axios from 'axios';
+import EDAPI from 'ed-api';
 import thunkMiddleware from 'redux-thunk';
-import EDConfig from 'ed-config';
 import { EDComponentFactory } from 'ed-components/dialog';
 import EDGlossAdminReducer from '../../../gloss/reducers/admin';
 import EDGlossForm from '../../../gloss/components/forms';
@@ -38,7 +37,7 @@ class BodyComponent extends React.Component {
     }
 
     componentWillMount() {
-        axios.get(this.state.url, {
+        EDAPI.get(this.state.url, {
             // It is necessary to provide these additional headers to ensure a JSON response.
             headers: {
                 'Accept': 'application/json',

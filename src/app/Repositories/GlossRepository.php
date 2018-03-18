@@ -77,10 +77,9 @@ class GlossRepository
         }
 
         $senses = self::getSensesForWord($word);
-        return self::createGlossQuery($languageId, true /* = latest */, $includeOld)
-            ->whereIn('g.sense_id', $senses)
-            ->orderBy('w.word')
-            ->orderBy('t.id')
+        return self::createGlossQuery($languageId, true /* = latest */, $includeOld, function($q) use($senses) {
+                return $q->whereIn('g.sense_id', $senses);
+            })
             ->get()
             ->toArray();
     }
@@ -93,8 +92,9 @@ class GlossRepository
      */
     public function getGloss(int $id) 
     {
-        $gloss = self::createGlossQuery(0, false)
-            ->where('g.id', $id)
+        $gloss = self::createGlossQuery(0, false, true, function ($q) use($id) {
+                return $q->where('g.id', $id);
+            })
             ->get();
 
         return $gloss;
@@ -108,8 +108,9 @@ class GlossRepository
      */
     public function getGlosses(array $ids) 
     {
-        $glosses = self::createGlossQuery(0, false)
-            ->whereIn('g.id', $ids)
+        $glosses = self::createGlossQuery(0, false, true, function ($q) use($ids) {
+                return $q->whereIn('g.id', $ids);
+            })
             ->get();
 
         return $glosses;
@@ -126,7 +127,7 @@ class GlossRepository
         $data = DB::table('glosses')
             ->where([
                 ['glosses.origin_gloss_id', $originGlossId],
-                ['is_latest', 1]
+                ['glosses.is_latest', 1]
             ])
             ->select('id')
             ->first();
@@ -145,12 +146,12 @@ class GlossRepository
         }
 
         $originId = $gloss->origin_gloss_id ?: $gloss->id;
-        return self::createGlossQuery(0, false)
-            ->where(function ($query) use($originId) {
-                $query->where('g.id', $originId)
-                    ->orWhere('g.origin_gloss_id', $originId);
+        return self::createGlossQuery(0, false, true, function ($q) use ($originId) {
+                return $q->where(function ($query) use($originId) {
+                    $query->where('g.id', $originId)
+                        ->orWhere('g.origin_gloss_id', $originId);
+                });
             })
-            ->orderBy('g.id', 'desc')
             ->get()
             ->toArray();
     }
@@ -185,7 +186,17 @@ class GlossRepository
             return $groupedSuggestions;
         }
 
-        $query = self::createGlossQuery($languageId);
+        $query = self::createGlossQueryWithoutDetails([
+            'w.normalized_word',
+            'w.word',
+            'g.comments',
+            's.name as type',
+            't.translation',
+            'g.source',
+            'a.nickname as account_name',
+            'tg.name as gloss_group_name',
+            'g.id'
+        ], false)->where('g.language_id', $languageId);
         
         if ($inexact) {
             $query->where(function ($query) use ($normalizedWords) {
@@ -230,7 +241,7 @@ class GlossRepository
         return $groupedSuggestions;
     }
 
-    public function saveGloss(string $wordString, string $senseString, Gloss $gloss, array $translations, array $keywords, $resetKeywords = true, bool & $changed = null)
+    public function saveGloss(string $wordString, string $senseString, Gloss $gloss, array $translations, array $keywords, array $details = [], $resetKeywords = true, bool & $changed = null)
     {
         if (! $gloss instanceof Gloss) {
             throw new \Exception("Gloss must be an instance of the Gloss class.");
@@ -250,6 +261,12 @@ class GlossRepository
 
         if (! $gloss->account_id) {
             throw new \Exception('Invalid account ID.');
+        }
+
+        foreach ($details as $detail) {
+            if (! $detail->account_id) {
+                throw new \Exception('Invalid account ID for details.');
+            }
         }
 
         // 1. Turn all words should be lower case.
@@ -281,7 +298,7 @@ class GlossRepository
         }
 
         if ($gloss->id) {
-            $originalGloss = Gloss::with('sense', 'translations', 'word', 'keywords')
+            $originalGloss = Gloss::with('sense', 'translations', 'word', 'keywords', 'gloss_details')
                 ->findOrFail($gloss->id)->getLatestVersion();
 
             // 5. were there changes made?
@@ -323,7 +340,7 @@ class GlossRepository
                         return $ot->translation === $t->translation;
                     })) {
                         // When not existing, the collection has changed.
-                        $changed = true;
+                        $translationsChanged = true;
                         break;
                     }
                 }
@@ -331,6 +348,27 @@ class GlossRepository
             
             if ($translationsChanged) {
                 $changed = true;
+            }
+
+            // Gloss details changed?
+            if (! $changed) {
+                $detailsChanged = $originalGloss->gloss_details->count() !== count($details);
+                if (! $detailsChanged) {
+                    foreach ($details as $d) {
+                        if (! $originalGloss->gloss_details->contains(function ($od) use($d) {
+                            return $od->category === $d->category &&
+                                   $od->order === $d->order &&
+                                   $od->text === $d->text;
+                        })) {
+                            $detailsChanged = true;
+                            break;
+                        }
+                    }
+                }
+
+                if ($detailsChanged) {
+                    $changed = true;
+                }
             }
 
             if ($changed) {
@@ -363,6 +401,7 @@ class GlossRepository
             $gloss->is_index = 0;
             $gloss->save();
             $gloss->translations()->saveMany($translations);
+            $gloss->gloss_details()->saveMany($details);
 
             // 8. Update existing associations to the new entity.
             if ($originalGloss !== null) {
@@ -615,7 +654,7 @@ class GlossRepository
      * @param boolean $includeOld
      * @return Illuminate\Database\Eloquent\Builder
      */
-    protected static function createGlossQuery($languageId = 0, $latest = true, $includeOld = true) 
+    protected static function createGlossQuery($languageId = 0, $latest = true, $includeOld = true, callable $whereCallback = null) 
     {
         $filters = [
             ['g.is_deleted', 0],
@@ -630,24 +669,70 @@ class GlossRepository
             $filters[] = ['tg.is_old', 0];
         }
 
-        $q = DB::table('glosses as g')
-            ->join('words as w', 'g.word_id', 'w.id')
-            ->join('translations as t', 'g.id', 't.gloss_id')
-            ->leftJoin('accounts as a', 'g.account_id', 'a.id')
-            ->leftJoin('gloss_groups as tg', 'g.gloss_group_id', 'tg.id')
-            ->leftJoin('speeches as s', 'g.speech_id', 's.id')
-            ->where($filters);
-
         if ($languageId !== 0) {
-            $q = $q->where('g.language_id', $languageId);
+            $filters[] = ['g.language_id', $languageId];
         }
 
-        return $q->select(
-                'w.word', 'g.id', 't.translation', 'g.etymology', 's.name as type', 'g.source',
-                'g.comments', 'g.tengwar', 'g.phonetic', 'g.language_id', 'g.account_id',
-                'a.nickname as account_name', 'w.normalized_word', 'g.is_index', 'g.created_at', 'g.gloss_group_id',
-                'tg.name as gloss_group_name', 'tg.is_canon', 'tg.external_link_format', 'g.is_uncertain', 
-                'g.external_id', 'g.is_latest', 'g.is_rejected', 'g.origin_gloss_id', 'g.sense_id');
+        static $columns = [
+            'w.word', 'g.id', 't.translation', 'g.etymology', 's.name as type', 'g.source',
+            'g.comments', 'g.tengwar', 'g.phonetic', 'g.language_id', 'g.account_id',
+            'a.nickname as account_name', 'w.normalized_word', 'g.is_index', 'g.created_at', 'g.gloss_group_id',
+            'tg.name as gloss_group_name', 'tg.is_canon', 'tg.external_link_format', 'g.is_uncertain', 
+            'g.external_id', 'g.is_latest', 'g.is_rejected', 'g.origin_gloss_id', 'g.sense_id'
+        ];
+
+        $q0 = self::createGlossQueryWithoutDetails($columns, true)
+            ->where($filters);
+        
+        if ($whereCallback != null) {
+            $tmp = $whereCallback($q0);
+            if ($tmp) {
+                $q0 = $tmp;
+            }
+        }
+
+        $q1 = self::createGlossQueryWithDetails($columns)
+            ->where($filters);
+        
+        if ($whereCallback != null) {
+            $tmp = $whereCallback($q1);
+            if ($tmp) {
+                $q1 = $tmp;
+            }
+        }
+
+        return $q0->union($q1);
+    }
+
+    protected static function createGlossQueryWithoutDetails(array $columns, bool $addDetailsColumns)
+    {
+        if ($addDetailsColumns) {
+            $columns = array_merge($columns, [
+                DB::raw('NULL as gloss_details_category'), 
+                DB::raw('NULL as gloss_details_text'), 
+                DB::raw('NULL as gloss_details_order')
+            ]);
+        }
+
+        return DB::table('glosses as g')
+            ->join('words as w', 'g.word_id', 'w.id')
+            ->join('translations as t', 'g.id', 't.gloss_id')
+            ->join('accounts as a', 'g.account_id', 'a.id')
+            ->leftJoin('gloss_groups as tg', 'g.gloss_group_id', 'tg.id')
+            ->leftJoin('speeches as s', 'g.speech_id', 's.id')
+            ->select($columns);
+    }
+
+    protected static function createGlossQueryWithDetails(array $columns)
+    {
+        $columns = array_merge($columns, [
+            'gd.category as gloss_details_category', 
+            'gd.text as gloss_details_text', 
+            'gd.order as gloss_details_order'
+        ]);
+        
+        return self::createGlossQueryWithoutDetails($columns, false)
+            ->join('gloss_details as gd', 'g.id', 'gd.gloss_id');
     }
 
     protected function deleteGloss(Gloss $g, int $replaceId = null) 

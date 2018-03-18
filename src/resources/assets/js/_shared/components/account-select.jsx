@@ -1,7 +1,6 @@
 import React from 'react';
-import axios from 'axios';
+import EDAPI from 'ed-api';
 import classNames from 'classnames';
-import EDConfig from 'ed-config';
 import Autosuggest from 'react-autosuggest';
 
 class EDAccountSelect extends React.Component {
@@ -33,7 +32,7 @@ class EDAccountSelect extends React.Component {
                     };
                 }
 
-                axios.get(EDConfig.api(`account/${account}`))
+                EDAPI.get(`account/${account}`)
                     .then(resp => this.setValue(resp.data))
                     .catch(resp => this.setValue(undefined));
             }
@@ -122,7 +121,7 @@ class EDAccountSelect extends React.Component {
             this.loading = true;
 
             // Retrieve suggestions for the specified word.
-            axios.post(EDConfig.api('account/find'), { nickname, max: 10 })
+            EDAPI.post('account/find', { nickname, max: 10 })
             .then(resp => {
                 this.setState({
                     suggestions: resp.data,

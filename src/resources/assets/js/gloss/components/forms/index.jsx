@@ -1,8 +1,7 @@
 import React from 'react';
 import { connect } from 'react-redux';
 import classNames from 'classnames';
-import axios from 'axios';
-import EDConfig from 'ed-config';
+import EDAPI from 'ed-api';
 import { EDStatefulFormComponent } from 'ed-form';
 import EDMarkdownEditor from 'ed-components/markdown-editor';
 import EDLanguageSelect from 'ed-components/language-select';
@@ -24,6 +23,7 @@ class EDGlossForm extends EDStatefulFormComponent {
             id: 0,
             account_id: 0,
             language_id: 0,
+            language: null,
             word_id: 0,
             gloss_group_id: 0,
             speech_id: 0,
@@ -41,32 +41,42 @@ class EDGlossForm extends EDStatefulFormComponent {
     }
 
     componentWillMount() {
-        this.props.dispatch(this.props.admin
-            ? requestGlossGroups() // admin view requires information from the server
-            : componentIsReady()
-        );
+        EDAPI.languages().then(() => {
+            this.props.dispatch(this.props.admin
+                ? requestGlossGroups() // admin view requires information from the server
+                : componentIsReady()
+            );
+
+            const props = this.props;
+            this.setState({
+                id:             props.glossId || 0,
+                account_id:     props.glossAccountId || 0,
+                language_id:    props.glossLanguageId || 0,
+                word_id:        props.glossWordId || 0 ,
+                speech_id:      props.glossSpeechId || 0,
+                gloss_group_id: props.glossGroupId || 0,
+                sense:          props.glossSense || '',
+                keywords:       props.glossKeywords || [],
+                translations:   props.glossTranslations || '',
+                source:         props.transationSource || '',
+                comments:       props.glossComments || '',
+                notes:          props.glossNotes || '',
+                is_uncertain:   props.glossUncertain || 0,
+                is_rejected:    props.glossRejected || 0,
+                tengwar:        props.glossTengwar || '',
+                word:           props.glossWord ? props.glossWord.word : '', 
+            })
+        });
     }
 
-    componentDidMount() {
-        const props = this.props;
-        this.setState({
-            id:             props.glossId || 0,
-            account_id:     props.glossAccountId || 0,
-            language_id:    props.glossLanguageId || 0,
-            word_id:        props.glossWordId || 0 ,
-            speech_id:      props.glossSpeechId || 0,
-            gloss_group_id: props.glossGroupId || 0,
-            sense:          props.glossSense || '',
-            keywords:       props.glossKeywords || [],
-            translations:   props.glossTranslations || '',
-            source:         props.transationSource || '',
-            comments:       props.glossComments || '',
-            notes:          props.glossNotes || '',
-            is_uncertain:   props.glossUncertain || 0,
-            is_rejected:    props.glossRejected || 0,
-            tengwar:        props.glossTengwar || '',
-            word:           props.glossWord ? props.glossWord.word : '', 
-        })
+    componentWillReceiveProps(props) {
+        if (props.glossLanguageId) {
+            EDAPI.languages(props.glossLanguageId).then(language => {
+                this.setState({
+                    language 
+                });
+            });
+        }
     }
 
     onSubmit(ev) {
@@ -86,15 +96,15 @@ class EDGlossForm extends EDStatefulFormComponent {
             payload.gloss_group_id = state.gloss_group_id || undefined;
             
             if (payload.id) {
-                promise = axios.put(`/admin/gloss/${payload.id}`, payload);
+                promise = EDAPI.put(`/admin/gloss/${payload.id}`, payload);
             } else {
-                promise = axios.post('/admin/gloss', payload);
+                promise = EDAPI.post('/admin/gloss', payload);
             }
         } else {
             if (this.props.contributionId) {
-                promise = axios.put(`/dashboard/contribution/${this.props.contributionId}`, payload);
+                promise = EDAPI.put(`/dashboard/contribution/${this.props.contributionId}`, payload);
             } else {
-                promise = axios.post('/dashboard/contribution', payload);
+                promise = EDAPI.post('/dashboard/contribution', payload);
             }
         }
 
@@ -114,13 +124,13 @@ class EDGlossForm extends EDStatefulFormComponent {
         // Laravel returns 422 when the request fails validation. In the event that
         // we received an alternate status code, bail, as we do not know what that payload
         // contains.
-        if (request.response.status !== EDConfig.apiValidationErrorStatusCode) {
+        if (request.response.status !== EDAPI.apiValidationErrorStatusCode) {
             return; 
         }
 
         // Laravel returns a dictionary with the name of the component as the key.
         // Flatten the errors array, by aggregating all validation errors. 
-        const groupedErrors = request.response.data;
+        const groupedErrors = request.response.data.errors;
         const componentNames = Object.keys(groupedErrors);
         let aggregatedErrors = [];
 
@@ -136,13 +146,26 @@ class EDGlossForm extends EDStatefulFormComponent {
         // scrolled too far down to notice the error messages.
         smoothScrollIntoView(this.formControl);
     }
+
+    onLanguageChange(ev) {
+        const languageId = parseInt(ev.target.getValue(), 10);
+        if (languageId === this.state.language_id) {
+            return;
+        }
+        
+        EDAPI.languages(languageId)
+            .then(language => {
+                super.onChange(ev, 'number');
+                this.setState({
+                    language
+                });
+            });
+    }
  
     render() {
         if (this.props.loading) {
             return <div className="sk-spinner sk-spinner-pulse"></div>;
         }
-
-        const language = EDConfig.findLanguage(this.state.language_id);
 
         return <form onSubmit={this.onSubmit.bind(this)} ref={c => this.formControl = c}>
             <EDErrorList errors={this.state.errors} />
@@ -159,7 +182,7 @@ class EDGlossForm extends EDStatefulFormComponent {
             <div className="form-group">
                 <label htmlFor="ed-gloss-language" className="control-label">Language</label>
                 <EDLanguageSelect className="form-control" componentId="ed-gloss-language" componentName="language_id" 
-                    onChange={ev => super.onChange(ev, 'number')} value={this.state.language_id} />
+                    onChange={this.onLanguageChange.bind(this)} value={this.state.language_id} />
             </div>
             <div className="form-group">
                 <label htmlFor="ed-gloss-word" className="control-label">Word</label>
@@ -169,7 +192,7 @@ class EDGlossForm extends EDStatefulFormComponent {
             <div className="form-group">
                 <label htmlFor="ed-gloss-tengwar" className="control-label">Tengwar</label>
                 <EDTengwarInput componentId="ed-gloss-tengwar" componentName="tengwar" 
-                    tengwarMode={language ? language.tengwar_mode : undefined} transcriptionSubject={this.state.word}
+                    tengwarMode={this.state.language ? this.state.language.tengwar_mode : undefined} transcriptionSubject={this.state.word}
                     value={this.state.tengwar} onChange={super.onChange.bind(this)} />
             </div>
             <div className="form-group">
