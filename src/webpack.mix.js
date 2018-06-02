@@ -43,7 +43,7 @@ mix.extract([
     'react-redux', 'redux', 'redux-thunk',
     'react-autosuggest', 
     'html-to-react',
-    'axios',
+    'axios', 'axios-retry',
     'classnames',
     /* These components are excuded from _vendor.js_ as they are limited to restricted visitors 
     'ed-components/dialog',
@@ -120,6 +120,10 @@ mix.js([
 mix.js([
     'resources/assets/js/system-errors/index.jsx'
 ], `${outputDir}/js/system-errors-admin.js`);
+
+mix.js([
+    'resources/assets/js/member-list/index.jsx'
+], `${outputDir}/js/member-charts.js`);
 
 // .sourceMaps();
 

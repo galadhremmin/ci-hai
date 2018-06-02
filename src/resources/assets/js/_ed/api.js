@@ -1,9 +1,11 @@
 import axios from 'axios';
+import axiosRetry from 'axios-retry';
 
 const EDAPI = {
     apiPathName: '/api/v2', // path to API w/o trailing slash!
     apiErrorMethod: 'utility/error',
     apiValidationErrorStatusCode: 422,
+    isRaxed: false,
 
     /**
      * Execute a DELETE request.
@@ -43,8 +45,8 @@ const EDAPI = {
     /**
      * Register the specified error.
      */
-    error: function (message, url, error) {
-        return this.post(this.apiErrorMethod, { message, url, error });
+    error: function (message, url, error, category = 'frontend') {
+        return this.post(this.apiErrorMethod, { message, url, error, category });
     },
 
     /**
@@ -102,6 +104,11 @@ const EDAPI = {
      * Combines an absolute path based on the API method path.
      */
     _absPath: function (path) {
+        const origin = window.location.origin;
+        if (origin.length < path.length && path.substr(0, origin.length) == origin) {
+            return path;
+        }
+
         return path[0] === '/' ? path : this.apiPathName + '/' + path;
     },
 
@@ -112,13 +119,36 @@ const EDAPI = {
         headers: {
             'Accept': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
-        }
+        },
+        timeout: 2500
     }),
+
+    /**
+     * A request is retryable if it was aborted (i.e. timeout) or the axios retry library deems it idempotent. The error 
+     * logging method is not retryable.
+     */
+    _isRetryable: function (error) {
+        return error.config.url.substr(-this.apiErrorMethod.length) !== this.apiErrorMethod && 
+            (error.code === 'ECONNABORTED' || axiosRetry.isRetryableError(error));
+    },
 
     /**
      * Executes the specified HTTP method and manages errors gracefully.
      */
     _consume: function (factory, apiMethod, payload) {
+        if (! apiMethod || apiMethod.length < 1) {
+            return Promise.reject(`You need to specify an API method to invoke.`);
+        }
+
+        if (! this.isRaxed) {
+            axiosRetry(axios, { 
+                retries: 3, 
+                retryDelay: axiosRetry.exponentialDelay,
+                retryCondition: this._isRetryable.bind(this)
+            });
+            this.isRaxed = true;
+        }
+
         const config = this._config();
         const hasBody = payload !== undefined;
         return factory
@@ -131,22 +161,28 @@ const EDAPI = {
 
     _handleError: function (apiMethod, error) {
         if (apiMethod === this.apiErrorMethod) {
-            return reason;
+            return Promise.reject(error);
         }
 
         let errorReport = null;
+        let category = undefined;
         if (error.response) {
             let message = null;
             switch (error.response.status) {
-                case 419:
-                    message = 'Your browsing session has timed out. This usually happens when you leave the page open for a long time. Please refresh the page and try again.';
-                    break;
                 case 401:
                     message = 'You must log in to use this feature.';
+                    category = 'frontend-401';
                     break;
                 case 403:
                     message = 'You are not authorized to use this feature.';
+                    category = 'frontend-403';
                     break;
+                case 419:
+                    message = 'Your browsing session has timed out. This usually happens when you leave the page open for a long time. Please refresh the page and try again.';
+                    category = 'frontend-419';
+                    break;
+                case this.apiValidationErrorStatusCode:
+                    return Promise.reject(error); // Validation errors are pass-through.
                 default:
                     errorReport = {
                         apiMethod,
@@ -167,8 +203,10 @@ const EDAPI = {
             // http.ClientRequest in node.js
             errorReport = {
                 apiMethod,
+                request: error.request,
                 error: 'API call received no response.'
             };
+            category = 'api-noresponse';
         } else {
             // Something happened in setting up the request that triggered an Error
             errorReport = {
@@ -179,7 +217,7 @@ const EDAPI = {
 
         if (errorReport !== null) {
             errorReport.config = error.config;
-            this.error('API request failed', apiMethod, JSON.stringify(errorReport));
+            this.error('API request failed', apiMethod, JSON.stringify(errorReport, undefined, 2), category);
         }
 
         return Promise.reject('API request failed ' + apiMethod);

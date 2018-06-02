@@ -19,12 +19,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        // Reference: https://laravel.com/docs/master/migrations#creating-indexes
         Schema::defaultStringLength(191);
         Morphs::map();
 
         // @markdown method injection
         Blade::directive('markdown', function (string $data) {
-            return "<?php echo (new \App\Helpers\MarkdownParser)->parse($data); ?>";
+            return "<?php echo (new \App\Helpers\MarkdownParser)->text($data); ?>";
+        });
+        Blade::directive('markdownInline', function (string $data) {
+            return "<?php echo (new \App\Helpers\MarkdownParser)->line($data); ?>";
         });
 
         Blade::directive('assetpath', function (string $filePath) {

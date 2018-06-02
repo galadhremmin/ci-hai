@@ -251,6 +251,20 @@ Breadcrumbs::register('discuss.create', function ($breadcrumbs)
     $breadcrumbs->push('New thread', route('discuss.create'));
 });
 
+Breadcrumbs::register('discuss.members', function ($breadcrumbs)
+{
+    $breadcrumbs->parent('discuss');
+    $breadcrumbs->push('Contributors', route('discuss.members'));
+});
+
+Breadcrumbs::register('discuss.member-list', function ($breadcrumbs)
+{
+    $breadcrumbs->parent('discuss.members');
+    $breadcrumbs->push('All contributors', route('discuss.member-list'));
+});
+
+
+
 // //////////////////////////////////////////////////////////////////////////////////////////////
 // Dashboard > System errors
 
