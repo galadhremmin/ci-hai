@@ -81,14 +81,26 @@ class CCCEDICTImportCommand extends Command
                 $simplified   = substr($line, $pos0 + 1, $pos1 - $pos0);
                 $pinyin       = substr($line, $pos2 + 1, $pos3 - $pos2 - 1);
 
-                // Convert the array of translations (strings) into an array of Translation objects.
-                // The array_map function returns an associative array, which does not work in conjunction
-                // with array_splice, as it does not rebase the array after indices were removed. Therefore, the
-                // resulting associative array is passed into array_values, which yields an array compatible
-                // with the necessary functionality.
-                $translations = array_values(array_map(function ($t) {
-                    return new Translation(['translation' => $t]);
-                }, array_unique(explode('/', substr($line, $pos4 + 1, $pos5 - $pos4 - 1)))));
+                // Retrieve all glosses as strings
+                $translations = explode('/', substr($line, $pos4 + 1, $pos5 - $pos4 - 1));
+
+                // Split by ; and pick out uniques
+                $translations = array_reduce($translations, function ($carry, $item) {
+                    $parts = explode(';', $item);
+                    foreach ($parts as $translation) {
+                        $translation = mb_strtolower(trim($translation));
+                        if (! in_array($translation, $carry)) {
+                            $carry[] = $translation;
+                        }
+                    }
+
+                    return $carry;
+                }, []);
+
+                // Convert array elements from string to Translation
+                $translations = array_map(function ($item) {
+                    return new Translation(['translation' => $item]);
+                }, $translations);
 
                 $glosses[] = [
                     'traditional'  => $traditional, 
