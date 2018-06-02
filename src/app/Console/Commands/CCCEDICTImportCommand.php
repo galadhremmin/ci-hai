@@ -213,6 +213,7 @@ class CCCEDICTImportCommand extends Command
                     $tt,
                     $gloss['translations'],
                     $keywords,
+                    [],
                     true,
                     $changedT
                 );
@@ -224,6 +225,7 @@ class CCCEDICTImportCommand extends Command
                     $ts,
                     $gloss['translations'],
                     $keywords,
+                    [],
                     true,
                     $changedS
                 );
